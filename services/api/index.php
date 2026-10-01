@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__.'/../includes/runtime.php';
+require_once __DIR__.'/../../includes/runtime.php';
 require_once __DIR__.'/../../includes/auth.php';
 require_once __DIR__.'/../../includes/service_client.php';
 header('Content-Type: application/json; charset=utf-8');
