@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__.'/includes/runtime.php';
 require_once __DIR__.'/includes/auth.php';
 $base=rtrim(app_base_path(),'/');
 if(current_user()){
