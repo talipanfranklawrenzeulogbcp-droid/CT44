@@ -1,7 +1,4 @@
 <?php
-// Load runtime/session configuration before starting the session so secure,
-// HttpOnly and SameSite cookie attributes are actually applied on first request.
-require_once __DIR__.'/config.php';
 if (session_status() !== PHP_SESSION_ACTIVE) session_start();
 
 function current_user(): ?array { return $_SESSION['user'] ?? null; }

@@ -65,6 +65,6 @@ RUN mkdir -p storage/logs storage/exports storage/reports \
 EXPOSE 80
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD php -r '$ch=curl_init("http://127.0.0.1/health.php"); curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_FAILONERROR=>true,CURLOPT_TIMEOUT=>4]); $ok=curl_exec($ch); $code=(int)curl_getinfo($ch,CURLINFO_RESPONSE_CODE); curl_close($ch); exit($ok===false || $code!==200 ? 1 : 0);'
+    CMD php -r '$c=@file_get_contents("http://127.0.0.1/health.php"); if ($c===false) exit(1); $j=json_decode($c,true); exit(($j["status"]??"")==="ok" ? 0 : 1);'
 
 CMD ["apache2-foreground"]

@@ -48,8 +48,7 @@ The login now uses password + a 6-digit OTP before opening the dashboard.
 - Administrator name: `Admin`
 - Administrator password: `ISMERSCT4`
 
-For production, move the Gmail App Password from `includes/config.php` to environment variables:
-`GSMS_MAIL_USERNAME` and `GSMS_MAIL_PASSWORD`.
+For production, set the Gmail App Password through the server environment variables `GSMS_MAIL_USERNAME` and `GSMS_MAIL_PASSWORD`.
 
 
 ---
@@ -77,9 +76,9 @@ For security, passwords/password hashes, OTPs, SMTP credentials, API keys, sessi
 ### Server environment
 Set these variables on the PHP server (not in JavaScript or a public file):
 - `GEMINI_API_KEY` — your Gemini API key
-- `GEMINI_MODEL` — defaults to `gemini-2.0-flash`
+- `GEMINI_MODEL` — defaults to `gemini-3.8-flash`
 
-See `.env.example` for the names only. For the supplied local build, the Gemini key is stored in the server-only `.env` file and is never sent to browser JavaScript. Rotate the supplied key after testing because it was shared during setup.
+See `.env.example` for the names only. The package does not include a live `.env` file or API key. Copy `.env.example` to `.env` for local development, fill in your own secrets, and never commit `.env`.
 
 
 ## CT4 Authentication and Gmail OTP
