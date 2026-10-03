@@ -139,7 +139,8 @@ function feedbackThreadCard(thread,isAdmin){
   ? `<button type="button" class="gw-btn secondary" onclick="showFeedbackReply(${Number(thread.id)})"><span class="material-symbols-outlined">reply</span>Reply</button>
      <button type="button" class="gw-btn secondary" onclick="updateFeedbackStatus(${Number(thread.id)},'In Review')">In Review</button>
      ${thread.status==='Resolved'?'<button type="button" class="gw-btn secondary" disabled>Resolved</button>':'<button type="button" class="gw-btn secondary" onclick="updateFeedbackStatus('+Number(thread.id)+',\'Resolved\')">Resolve</button>'}
-     <button type="button" class="gw-btn btn-danger" onclick="archiveFeedback(${Number(thread.id)})"><span class="material-symbols-outlined">archive</span>Archive</button>`
+     <button type="button" class="gw-btn secondary" onclick="archiveFeedback(${Number(thread.id)})"><span class="material-symbols-outlined">archive</span>Archive</button>
+     <button type="button" class="gw-btn btn-danger" onclick="deleteFeedbackThread(${Number(thread.id)})"><span class="material-symbols-outlined">delete</span>Delete</button>`
   : `<button type="button" class="gw-btn primary" onclick="showFeedbackThread(${Number(thread.id)})"><span class="material-symbols-outlined">forum</span>Open Conversation</button>`;
  return `<div class="notification-card feedback-thread-card" data-feedback-thread="${Number(thread.id)}">
    <div class="notification-card-head"><div><strong>${escapeHtml(thread.subject||'Feedback')}</strong><span>${escapeHtml(owner)} · ${escapeHtml(thread.category||'General Feedback')}</span></div><small>${renderDate(thread.updated_at||thread.created_at)}</small></div>
@@ -271,13 +272,30 @@ async function showNotificationModal(fresh=true){
  const feedbackNotificationCards=feedbackNotes.map(n=>{
    const threadId=Number(n.feedback_thread_id)||0;
    const thread=threadId ? threads.find(t=>Number(t.id)===threadId) : null;
-   const action=thread ? `onclick="showFeedbackThread(${threadId})"` : '';
-   return `<button type="button" class="notification-card ${Number(n.is_read)===0?'unread':''}" ${action} style="width:100%;text-align:left;cursor:${thread?'pointer':'default'}"><div class="notification-card-head"><div><strong>${escapeHtml(n.title||'Feedback')}</strong><span>${escapeHtml(n.sender_name||'Employee')} · ${escapeHtml(n.sender_role||'Staff')}</span></div><small>${renderDate(n.created_at)}</small></div><p>${escapeHtml(n.message||'')}</p>${thread?'<div class="notification-actions"><span class="gw-btn secondary">Open Conversation</span></div>':''}</button>`;
+   const latest=thread && Array.isArray(thread.messages) && thread.messages.length ? thread.messages[thread.messages.length-1] : null;
+   const isReply=thread && latest && String(latest.sender_role||'').toLowerCase()==='administrator';
+   const unread=Number(n.is_read)===0;
+   const viewLabel=isStaff && (isReply || n.type==='feedback_reply') ? 'View Reply' : 'View Conversation';
+   const viewAction=thread
+     ? `showFeedbackThread(${threadId})`
+     : `showNotificationDetails(${Number(n.id)})`;
+   const deleteAction=isAdmin
+     ? `<button type="button" class="gw-btn btn-danger feedback-notification-delete" onclick="event.stopPropagation();deleteFeedbackThread(${threadId})" ${thread?'':'disabled'}><span class="material-symbols-outlined">delete</span>Delete</button>`
+     : '';
+   return `<div class="notification-card feedback-notification-card ${unread?'unread':''}" data-notification-id="${Number(n.id)}" data-feedback-thread="${threadId}">
+     <div class="notification-card-head">
+       <div class="notification-card-title-row"><span class="feedback-notification-icon ${isReply?'reply':''}"><span class="material-symbols-outlined">${isReply?'reply':'feedback'}</span></span><div><strong>${escapeHtml(n.title||'Feedback')}</strong><span>${escapeHtml(n.sender_name||'Employee')} · ${escapeHtml(n.sender_role||'Staff')}</span></div></div>
+       <small>${renderDate(n.created_at)}</small>
+     </div>
+     <div class="feedback-notification-status">${unread?'<span class="feedback-unread-pill"><span class="feedback-unread-dot"></span>New</span>':''}${isReply?'<span class="feedback-reply-pill"><span class="material-symbols-outlined">reply</span>Administrator replied</span>':''}</div>
+     <p>${escapeHtml(n.message||'')}</p>
+     ${thread?`<div class="notification-actions"><button type="button" class="gw-btn primary" onclick="showFeedbackThread(${threadId})"><span class="material-symbols-outlined">${isReply&&isStaff?'reply':'forum'}</span>${viewLabel}</button>${deleteAction}</div>`:''}
+   </div>`;
  }).join('');
  const transferCards=transfer.map(n=>`<div class="notification-card ${Number(n.is_read)===0?'unread':''}"><div class="notification-card-head"><div><strong>${escapeHtml(n.title||'Notification')}</strong><span>${escapeHtml(n.sender_name||'System')} · ${escapeHtml(n.sender_role||'System')}</span></div><small>${renderDate(n.created_at)}</small></div><p>${escapeHtml(n.message||'')}</p></div>`).join('');
  root.innerHTML=`<div class="gw-modal-backdrop" onclick="if(event.target===this)closeModal()"><div class="gw-modal notifications-modal feedback-inbox-modal">
  <div class="gw-modal-head"><div><strong>${title}</strong><small>${subtitle}</small></div><button class="gw-modal-close" onclick="closeModal()" aria-label="Close">×</button></div>
- <div class="gw-modal-body"><div class="feedback-inbox-toolbar"><div><strong>${threads.length}</strong><span>${isAdmin?'employee feedback thread'+(threads.length===1?'':'s'):'active feedback thread'+(threads.length===1?'':'s')}</span></div></div>${filterHtml}
+ <div class="gw-modal-body"><div class="feedback-inbox-toolbar"><div><strong>${threads.length}</strong><span>${isAdmin?'employee feedback thread'+(threads.length===1?'':'s'):'active feedback thread'+(threads.length===1?'':'s')}</span></div><div class="feedback-notification-summary"><span><span class="material-symbols-outlined">mark_email_unread</span>${notes.filter(n=>Number(n.is_read)===0).length} new</span><span><span class="material-symbols-outlined">reply</span>${threads.filter(t=>Array.isArray(t.messages)&&t.messages.length&&String(t.messages[t.messages.length-1].sender_role||'').toLowerCase()==='administrator').length} replied</span></div></div>${filterHtml}
  <div id="feedbackThreadList" class="notification-list">${cards}${feedbackNotificationCards}${transferCards}${(!cards&&!feedbackNotificationCards&&!transferCards)?`<div class="notification-empty"><span class="material-symbols-outlined">feedback</span><strong>${isAdmin?'No employee feedback yet':'No feedback yet'}</strong><p>${escapeHtml(subtitle)}</p></div>`:''}</div><div class="record-actions"><button class="gw-btn primary" onclick="closeModal()">Close</button></div></div></div></div>`;
  if(isAdmin) filterFeedbackInbox();
  fetch(`${window.APP_BASE||''}/includes/mark_notifications_read.php`,{method:'POST',headers:{'X-Requested-With':'XMLHttpRequest','X-CSRF-Token':window.CSRF_TOKEN||''},credentials:'same-origin'}).catch(()=>{});
@@ -335,7 +353,6 @@ async function deleteFeedbackThread(threadId){
  if(!id || window.CURRENT_USER?.role!=='Administrator')return;
  const t=(window.FEEDBACK_THREADS||[]).find(x=>Number(x.id)===id);
  if(!t)return;
- if(t.status==='New'){alert('Open the feedback first. New feedback cannot be deleted until it has been reviewed.');return;}
  if(!confirm(`Delete “${t.subject||'this feedback'}” and its conversation? This cannot be undone.`))return;
  const body=new URLSearchParams({action:'delete_feedback',thread_id:String(id),csrf_token:String(window.CSRF_TOKEN||''),return_to:window.location.pathname+window.location.search});
  try{

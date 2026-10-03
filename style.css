@@ -3435,3 +3435,141 @@ input:not([type="checkbox"]):not([type="radio"]):focus,select:focus,textarea:foc
  .feedback-stat-card strong{font-size:18px!important}
  .feedback-stat-card span{font-size:9px!important}
 }
+
+
+/* ==========================================================================
+   FEEDBACK NOTIFICATION CENTER — CONSISTENT WITH EXISTING CT4 UI
+   Additive styles only: keeps the existing workflow, tokens and components.
+   ========================================================================== */
+.feedback-notification-card{
+  position:relative;
+  overflow:hidden;
+  text-align:left;
+  transition:border-color .18s ease,box-shadow .18s ease,transform .18s ease;
+}
+.feedback-notification-card:hover{
+  border-color:#c7d2fe;
+  box-shadow:0 8px 24px rgba(15,23,42,.08);
+  transform:translateY(-1px);
+}
+.feedback-notification-card.unread{
+  border-left:4px solid var(--primary);
+  background:linear-gradient(180deg,#fbfbff 0%,#fff 100%);
+}
+.notification-card-title-row{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  min-width:0;
+}
+.notification-card-title-row>div{min-width:0}
+.feedback-notification-icon{
+  flex:0 0 34px;
+  width:34px;height:34px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:10px;
+  background:#eef2ff;
+  color:var(--primary);
+  border:1px solid #e0e7ff;
+}
+.feedback-notification-icon.reply{
+  background:#ecfdf5;
+  color:#047857;
+  border-color:#bbf7d0;
+}
+.feedback-notification-icon .material-symbols-outlined{font-size:19px}
+.feedback-notification-status{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  flex-wrap:wrap;
+  margin:8px 0 4px 44px;
+  min-height:18px;
+}
+.feedback-unread-pill,.feedback-reply-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  border-radius:999px;
+  padding:3px 8px;
+  font-size:10px;
+  line-height:1.2;
+  font-weight:800;
+}
+.feedback-unread-pill{
+  background:#eef2ff;
+  color:#4338ca;
+}
+.feedback-reply-pill{
+  background:#ecfdf5;
+  color:#047857;
+}
+.feedback-reply-pill .material-symbols-outlined{font-size:13px}
+.feedback-unread-dot{
+  width:7px;height:7px;border-radius:50%;
+  display:inline-block;
+  background:#4f46e5;
+  box-shadow:0 0 0 3px #e0e7ff;
+}
+.feedback-notification-card .notification-actions{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-top:13px;
+  padding-top:11px;
+  border-top:1px solid #eef2f7;
+}
+.feedback-notification-card .notification-actions .gw-btn{
+  min-height:36px;
+  padding:8px 12px;
+  font-size:12px;
+}
+.feedback-notification-delete{margin-left:auto}
+.feedback-thread-card .notification-actions{flex-wrap:wrap}
+.feedback-thread-card .notification-actions .btn-danger{margin-left:0}
+
+@media(max-width:900px){
+  .admin-feedback-stats{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .admin-feedback-workspace{grid-template-columns:1fr}
+  .admin-feedback-list{border-right:0;border-bottom:1px solid var(--outline-variant)}
+  .admin-feedback-items{max-height:330px}
+}
+@media(max-width:600px){
+  .admin-feedback-stats{grid-template-columns:repeat(2,minmax(0,1fr));padding-left:12px;padding-right:12px}
+  .feedback-notification-card .notification-card-head{gap:9px}
+  .feedback-notification-card .notification-card-head>small{font-size:10px}
+  .feedback-notification-status{margin-left:0}
+  .feedback-notification-card .notification-actions .gw-btn{flex:1 1 auto;justify-content:center}
+  .feedback-notification-delete{margin-left:0}
+  .notifications-modal{width:min(100% - 20px,760px);max-height:calc(100vh - 20px)}
+}
+@media(max-width:420px){
+  .admin-feedback-stats{grid-template-columns:1fr}
+}
+
+.feedback-notification-summary{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-left:auto;
+}
+.feedback-notification-summary>span{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  padding:6px 9px;
+  border:1px solid #e5e7eb;
+  border-radius:999px;
+  background:#fff;
+  color:#64748b;
+  font-size:10px;
+  font-weight:800;
+}
+.feedback-notification-summary .material-symbols-outlined{font-size:14px;color:var(--primary)}
+@media(max-width:600px){
+  .feedback-notification-summary{width:100%;margin-left:0}
+}

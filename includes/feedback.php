@@ -115,11 +115,6 @@ try{
         $thread=$q->fetch();
         if(!$thread)throw new RuntimeException('Feedback thread not found.');
 
-        // A feedback item must have been read/reviewed or answered before it can be deleted.
-        if(in_array((string)$thread['status'],['New'],true)){
-            throw new RuntimeException('Open the feedback first. New feedback cannot be deleted until it has been reviewed.');
-        }
-
         $q=$pdo->prepare("DELETE FROM admin_notifications WHERE feedback_thread_id=?");
         $q->execute([$threadId]);
         $q=$pdo->prepare("DELETE FROM feedback_threads WHERE id=?");
