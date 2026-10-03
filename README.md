@@ -21,6 +21,17 @@ This package is a database-backed PHP application for Core Transaction 4.
 3. If needed, edit `includes/config.php` or set `GSMS_DB_HOST`, `GSMS_DB_NAME`, `GSMS_DB_USER`, and `GSMS_DB_PASS`.
 4. Open the project in a browser.
 
+### Database connection troubleshooting
+For production/container deployment, configure `GSMS_DB_HOST`, `GSMS_DB_PORT`,
+`GSMS_DB_NAME`, `GSMS_DB_USER`, and `GSMS_DB_PASS` in the platform's server-side
+environment settings. `DATABASE_URL` and common `DB_*` / `MYSQL_*` variable names
+are also accepted. The application no longer silently falls back to a local
+database in production when the required deployment variables are missing.
+
+Use `/health.php?db=1` to test the live database connection. A successful response
+contains `"status":"ok"` and `"database":"ok"`. A failed database check returns
+HTTP 503 without exposing the database password.
+
 ## Default login
 - Name: `Admin`
 - Email: `adminct4@gmail.com`
@@ -48,7 +59,8 @@ The login now uses password + a 6-digit OTP before opening the dashboard.
 - Administrator name: `Admin`
 - Administrator password: `ISMERSCT4`
 
-For production, set the Gmail App Password through the server environment variables `GSMS_MAIL_USERNAME` and `GSMS_MAIL_PASSWORD`.
+For production, move the Gmail App Password from `includes/config.php` to environment variables:
+`GSMS_MAIL_USERNAME` and `GSMS_MAIL_PASSWORD`.
 
 
 ---
@@ -78,7 +90,7 @@ Set these variables on the PHP server (not in JavaScript or a public file):
 - `GEMINI_API_KEY` — your Gemini API key
 - `GEMINI_MODEL` — defaults to `gemini-3.8-flash`
 
-See `.env.example` for the names only. The package does not include a live `.env` file or API key. Copy `.env.example` to `.env` for local development, fill in your own secrets, and never commit `.env`.
+See `.env.example` for the names only. For the supplied local build, the Gemini key is stored in the server-only `.env` file and is never sent to browser JavaScript. Rotate the supplied key after testing because it was shared during setup.
 
 
 ## CT4 Authentication and Gmail OTP
@@ -92,3 +104,39 @@ Import `database/database.sql` into MySQL before first use. PHP must have OpenSS
 
 ## Role-based access
 Staff accounts can access Reports, Analysis & Dashboard, AI System Assistant, Health, Safety & Welfare, Legal & Compliance, and Asset & Equipment Issuance. System Administration & Security is administrator-only. Administrator dashboards include staff activity tracking for the Health, Safety & Welfare, Legal & Compliance, and Asset & Equipment Issuance modules through audit records.
+
+
+## Production readiness and security
+- All state-changing requests use a server-side CSRF token.
+- Login failures are rate-limited per email/IP, and OTP resend requests are throttled.
+- Sessions use strict mode, HttpOnly cookies, SameSite=Lax, and HTTPS-aware secure cookies.
+- Administrator-only APIs and irreversible archive deletion are protected server-side, not only by the UI.
+- Uploaded files are limited to 10 MB; potentially executable web formats are forced to download.
+- `.env`, SQL dumps, logs, and internal documentation are blocked from direct Apache access.
+- Use `.env.example` as the deployment variable template. Do not commit real SMTP passwords, Gemini keys, or database credentials.
+- Change the seeded administrator password immediately after first installation.
+- Recommended readiness probe: `/health.php?db=1` when the deployment platform supports database-aware health checks.
+
+
+## Enhanced Health, Safety & Compliance workflow
+The Health, Safety & Welfare module now preserves existing records while supporting:
+- employee ID, department, position, contact, emergency contact, medical provider, blood type, next checkup, restrictions, clearance expiry and document references;
+- safety incident type/location/reporting/witness/injury/treatment/immediate action/root cause/corrective action/investigation/closure/days lost/external reference;
+- incident status and severity updates plus corrective/preventive/investigation action tracking;
+- health follow-up scheduling and completion tracking.
+
+The Legal & Compliance module now preserves the existing compliance report and obligation records while supporting:
+- regulation/permit references, responsible department, findings, evidence references, corrective actions and review dates;
+- compliance status/priority updates;
+- corrective/preventive action items with owners, due dates and completion status;
+- audit scheduling and findings;
+- dashboard tracking for overdue health follow-ups and due compliance actions.
+
+All enhancements are additive database migrations. Existing data is not intentionally replaced or deleted by the upgrade.
+## Employee Legal & Compliance Documents
+The Legal & Compliance module includes an employee document register sourced from Health, Safety & Welfare records. It supports secure database-backed upload/view, document verification status, expiry monitoring, archiving/recovery, audit logging, and a recruitment-agency checklist covering identity, recruitment, employment, qualifications, health/welfare, safety/training, compliance, deployment/client, and benefits records. Existing database records and module workflows are preserved.
+
+
+
+## Demo data
+The database seed includes an idempotent CT4 demo-data pack. It adds 10 fictional health records, 10 safety incidents, 10 compliance obligations, 10 compliance audits, 10 assets, 10 issuance-history records, 10 maintenance records, and health follow-ups. It also fills blank enhanced fields on existing health, safety, compliance, asset, issuance, and maintenance records without overwriting populated values. Re-importing the seed does not duplicate the demo records.
