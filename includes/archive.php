@@ -2,6 +2,7 @@
 require_once __DIR__.'/helpers.php';
 require_login();
 $action=(string)($_POST['action'] ?? $_GET['action'] ?? 'list');
+if ($_SERVER['REQUEST_METHOD']==='POST') verify_csrf();
 
 if($action==='list'){
     header('Content-Type: application/json; charset=utf-8');
@@ -24,22 +25,24 @@ if($_SERVER['REQUEST_METHOD']==='POST' && $action==='recover'){
     try{
         if($a['item_type']==='file'){
             $p=json_decode((string)$a['payload'],true)?:[];
-            $svc=service('storage');
             $userId=(int)(current_user()['id'] ?? $a['deleted_by'] ?? 0);
-            $svc->save(
-                (string)$a['item_name'],
-                (string)($a['file_type'] ?: 'application/octet-stream'),
-                (string)($p['source_branch'] ?? 'Archived Recovery'),
-                $userId,
-                (string)($a['file_data'] ?? '')
-            );
+            if(($a['source_table']??'')==='employee_documents'){
+                $p['file_data']=(string)($a['file_data'] ?? '');
+                $p['file_type']=(string)($a['file_type'] ?: ($p['file_type'] ?? 'application/octet-stream'));
+                $p['file_size']=(int)strlen($p['file_data']);
+                $p['uploaded_by']=$userId ?: ($p['uploaded_by'] ?? null);
+                $cols=array_keys($p);$marks=implode(',',array_fill(0,count($cols),'?'));
+                db()->prepare('INSERT INTO employee_documents (`'.implode('`,`',$cols).'`) VALUES ('.$marks.')')->execute(array_values($p));
+            } else {
+                $svc=service('storage');
+                $svc->save((string)$a['item_name'],(string)($a['file_type'] ?: 'application/octet-stream'),(string)($p['source_branch'] ?? 'Archived Recovery'),$userId,(string)($a['file_data'] ?? ''));
+            }
         } else {
             $allowed=[
                 'safety_incidents',
                 'compliance_obligations',
                 'compliance_audits',
                 'health_records',
-                'health_safety_files',
                 'assets',
                 'asset_issuances',
                 'issuance_records',
@@ -71,6 +74,7 @@ if($_SERVER['REQUEST_METHOD']==='POST' && $action==='recover'){
 }
 
 if($_SERVER['REQUEST_METHOD']==='POST' && ($action==='delete' || $action==='purge')){
+    require_admin();
     $id=(int)($_POST['id']??0);
     $st=db()->prepare('SELECT item_name FROM archive_items WHERE id=?');
     $st->execute([$id]);
