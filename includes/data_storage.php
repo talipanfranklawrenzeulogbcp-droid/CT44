@@ -112,23 +112,15 @@ if($_SERVER['REQUEST_METHOD']==='POST' && $action==='upload'){
         $userId = (int)($u['id'] ?? 0);
         $storage->save($fileName,$mime,$sourceBranch,$userId,$data);
 
-        // Notify active staff accounts that a new data/file transfer is available.
-        $staffIds=db()->query("SELECT id FROM users WHERE role='Staff' AND active=1")->fetchAll(PDO::FETCH_COLUMN);
+        // Notify other active staff (and admins when staff uploaded) that a new transfer is available.
+        try {
+        $notes=service('notifications');
         $title='New Data/File Transfer';
-        $message='A new data/file has been transferred to Data Storage'.($sourceBranch!==''?' from '.$sourceBranch:'').': '.$fileName;
-        $notice=db()->prepare("INSERT INTO admin_notifications (user_id,type,title,message,sender_name,sender_role,sender_user_id) VALUES (?,?,?,?,?,?,?)");
-        foreach($staffIds as $staffId){
-            if((int)$staffId === $userId) continue;
-            $notice->execute([(int)$staffId,'data_transfer',$title,$message,(string)($u['name']??'User'),(string)($u['role']??'Staff'),$userId?:null]);
-        }
-        // If uploaded by staff, also notify administrators
-        if (($u['role'] ?? '') === 'Staff') {
-            $adminIds=db()->query("SELECT id FROM users WHERE role='Administrator' AND active=1")->fetchAll(PDO::FETCH_COLUMN);
-            foreach($adminIds as $adminId){
-                if((int)$adminId === $userId) continue;
-                $notice->execute([(int)$adminId,'data_transfer',$title,$message,(string)($u['name']??'User'),(string)($u['role']??'Staff'),$userId?:null]);
-            }
-        }
+        $message='A new data/file has been transferred to Data Storage from '.$sourceBranch.': '.$fileName;
+        $sender=['id'=>$userId,'name'=>(string)($u['name']??'User'),'role'=>(string)($u['role']??'Staff')];
+        $notes->notifyRole('Staff','data_transfer',$title,$message,$sender,$userId);
+        if (($u['role'] ?? '') === 'Staff') $notes->notifyRole('Administrator','data_transfer',$title,$message,$sender,$userId);
+        } catch(Throwable $e) { error_log('CT4 transfer notification failed: '.$e->getMessage()); }
 
         audit('Data Storage','Upload File',$fileName);
         flash('success','Data/file stored successfully.');

@@ -27,6 +27,14 @@ CREATE TABLE IF NOT EXISTS admin_notifications (
 ) ENGINE=InnoDB;
 ALTER TABLE admin_notifications ADD COLUMN IF NOT EXISTS sender_user_id INT UNSIGNED NULL AFTER sender_role;
 ALTER TABLE admin_notifications ADD INDEX IF NOT EXISTS idx_notification_sender_user (sender_user_id);
+-- Notification & feedback upgrade (additive; existing rows are preserved)
+ALTER TABLE admin_notifications ADD COLUMN IF NOT EXISTS category VARCHAR(40) NULL AFTER message;
+ALTER TABLE admin_notifications ADD COLUMN IF NOT EXISTS rating TINYINT UNSIGNED NULL AFTER category;
+ALTER TABLE admin_notifications ADD COLUMN IF NOT EXISTS parent_id BIGINT UNSIGNED NULL AFTER rating;
+ALTER TABLE admin_notifications ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'open' AFTER parent_id;
+ALTER TABLE admin_notifications ADD COLUMN IF NOT EXISTS is_dismissed TINYINT(1) NOT NULL DEFAULT 0 AFTER is_read;
+ALTER TABLE admin_notifications ADD INDEX IF NOT EXISTS idx_notification_parent (parent_id);
+ALTER TABLE admin_notifications ADD INDEX IF NOT EXISTS idx_notification_inbox (user_id,is_dismissed,is_read,created_at);
 CREATE TABLE IF NOT EXISTS archive_items (
  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
  item_type VARCHAR(40) NOT NULL,

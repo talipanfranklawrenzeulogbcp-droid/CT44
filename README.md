@@ -92,3 +92,15 @@ Import `database/database.sql` into MySQL before first use. PHP must have OpenSS
 
 ## Role-based access
 Staff accounts can access Reports, Analysis & Dashboard, AI System Assistant, Health, Safety & Welfare, Legal & Compliance, and Asset & Equipment Issuance. System Administration & Security is administrator-only. Administrator dashboards include staff activity tracking for the Health, Safety & Welfare, Legal & Compliance, and Asset & Equipment Issuance modules through audit records.
+
+
+## Notifications & Feedback (v2)
+- **Notification Service** (`services/NotificationService.php`) owns the `admin_notifications` table; **Feedback Service** (`services/FeedbackService.php`) handles feedback and replies. Endpoint: `includes/notifications.php`.
+- Per-notification read state: opening the bell no longer marks everything read. Click a card to mark it read, or use **Mark all read**. Direct notifications can be dismissed.
+- Filters: All / Unread, plus a **Feedback Inbox** tab for administrators. Older items load on demand (no more embedding 50 rows in every page).
+- Live badge: unread count refreshes every 60 s while the tab is visible. Polling is *passive* and never extends the 5-minute inactivity logout.
+- Feedback now has a category, optional 1–5 rating, character counter, spam limits (5/hour, no duplicates), and a **My Feedback** tab showing status (Open / Replied / Resolved) and admin replies.
+- Feedback goes to a shared inbox seen by **all** active administrators (previously tied to the first admin). Admins can reply multiple times and mark feedback Resolved/Reopen; the author is notified. Replies are no longer sent to an arbitrary staff account when the author can't be identified.
+- New notifications: administrators are told when staff submit a file request. Duplicate admin rows for data transfers are fixed.
+- CSRF tokens protect feedback and notification actions.
+- Database: additive columns on `admin_notifications` (`category`, `rating`, `parent_id`, `status`, `is_dismissed`) plus two indexes. They are applied automatically on first request (`includes/db.php`) and are included in `database/database.sql`. No existing data is changed.

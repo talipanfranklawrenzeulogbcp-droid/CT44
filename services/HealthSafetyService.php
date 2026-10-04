@@ -1,7 +1,7 @@
 <?php
 final class HealthSafetyService {
     private const MODULE='Health, Safety & Welfare';
-    public function __construct(private PDO $pdo, private AuditService $audit) {}
+    public function __construct(private PDO $pdo, private AuditService $audit, private ?NotificationService $notes=null) {}
 
     public function pdoForReporting(): PDO { return $this->pdo; }
 
@@ -64,6 +64,7 @@ return ['incidents'=>$i,'open_incidents'=>$o,'health_records'=>$h];
    $q=$this->pdo->prepare('INSERT INTO health_safety_files(employee_name,requester_user_id,file_name,file_type,action_type,request_date,notes) VALUES(?,?,?,?,?,?,?)');
    $q->execute([$employee,$requesterId,$file,$type,'Requested',$date,$notes]);
    $this->audit->record($user,self::MODULE,'Pending File Request',$file.' — '.$employee);
+   try { $this->notes?->notifyRole('Administrator','file_request','New File Request',$employee.' requested: '.$file.($type!==''?' ('.$type.')':''),$user,$requesterId); } catch(Throwable $e) {}
    return 'File request received and added to Pending Request Files.';
  }
  $storageIds=$data['storage_file_ids']??[];
@@ -76,7 +77,6 @@ return ['incidents'=>$i,'open_incidents'=>$o,'health_records'=>$h];
  $releasedNames=[];
  $update=$this->pdo->prepare("UPDATE health_safety_files SET action_type='Released',request_date=?,file_name=?,file_type=?,storage_file_id=?,released_at=NOW(),notes=? WHERE id=?");
  $insert=$this->pdo->prepare("INSERT INTO health_safety_files(employee_name,requester_user_id,file_name,file_type,storage_file_id,action_type,request_date,notes,released_at) VALUES(?,?,?,?,?,?,?,?,NOW())");
- $notice=$this->pdo->prepare("INSERT INTO admin_notifications(user_id,type,title,message,sender_name,sender_role) VALUES(?,?,?,?,?,?)");
  foreach($storageIds as $index=>$storageId){
    $stored=$this->storageFile($storageId);
    if(!$stored) throw new RuntimeException('One of the selected data/files is no longer available in Data Storage.');
@@ -89,7 +89,7 @@ return ['incidents'=>$i,'open_incidents'=>$o,'health_records'=>$h];
      $insert->execute([$employee,$rowRequesterId,$stored['file_name'],$stored['file_type'],$storageId,'Released',$date,$notes]);
    }
    if($rowRequesterId){
-     $notice->execute([$rowRequesterId,'file_release','File Released','Your requested file has been released: '.$stored['file_name'],(string)($user['name']??'Staff'),(string)($user['role']??'Staff')]);
+     try { $this->notes?->notify((int)$rowRequesterId,'file_release','File Released','Your requested file has been released: '.$stored['file_name'],$user); } catch(Throwable $e) {}
    }
  }
  $this->audit->record($user,self::MODULE,'Release File',implode(', ',$releasedNames).' — '.$employee);
