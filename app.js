@@ -285,11 +285,38 @@ function filterAdminFeedbackWorkspace(){
    if(holder)holder.insertAdjacentHTML('beforeend','<div class="admin-feedback-filter-empty"><span class="material-symbols-outlined">search_off</span><strong>No matching feedback</strong><p>Try a different search term or filter.</p></div>');
  }
 }
-async function submitAdminFeedbackReply(event,threadId){
- event.preventDefault(); const textarea=document.getElementById('adminFeedbackReply'); const submit=event.currentTarget?.querySelector('button[type="submit"]'); const message=(textarea?.value||'').trim(); if(!message||submit?.disabled)return;
- if(submit) { submit.disabled=true; submit.dataset.originalText=submit.innerHTML; submit.innerHTML='<span class="material-symbols-outlined">hourglass_top</span>Sending…'; }
+async function reloadFeedbackThreads(){
+ try{
+   const r=await fetch(`${window.APP_BASE||''}/includes/feedback_threads.php`,{credentials:'same-origin',headers:{'X-Requested-With':'XMLHttpRequest'},cache:'no-store'});
+   const d=await r.json().catch(()=>null);
+   if(r.ok&&d?.ok&&Array.isArray(d.threads)){window.FEEDBACK_THREADS=d.threads;return true;}
+ }catch(_e){}
+ return false;
+}
+// Single place that sends an administrator reply, so every Reply button behaves the same.
+async function postAdminFeedbackReply(threadId,message){
  const body=new URLSearchParams({action:'reply',thread_id:String(threadId),feedback:message,csrf_token:String(window.CSRF_TOKEN||''),return_to:window.location.pathname+window.location.search});
- try{const r=await fetch(`${window.APP_BASE||''}/includes/feedback.php`,{method:'POST',credentials:'same-origin',headers:{'X-Requested-With':'XMLHttpRequest','Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:body.toString()}); const d=await r.json(); if(!r.ok||!d.ok)throw new Error(d.message||'Unable to send reply.'); const t=adminFeedbackThreads().find(x=>Number(x.id)===Number(threadId)); if(t){t.status='Replied';t.messages=t.messages||[];t.messages.push({sender_user_id:window.CURRENT_USER?.id||null,sender_name:window.CURRENT_USER?.name||'Administrator',sender_role:'Administrator',message,created_at:new Date().toISOString()});t.updated_at=new Date().toISOString();} renderAdminFeedbackInterface(threadId);}catch(e){if(submit){submit.disabled=false;submit.innerHTML=submit.dataset.originalText||'Send Reply';}alert(e.message||'Unable to send reply.');}
+ const r=await fetch(`${window.APP_BASE||''}/includes/feedback.php`,{method:'POST',credentials:'same-origin',headers:{'X-Requested-With':'XMLHttpRequest','Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:body.toString()});
+ const d=await r.json().catch(()=>({ok:false,message:'Invalid server response.'}));
+ if(!r.ok||!d.ok)throw new Error(d.message||'Unable to send reply.');
+ // Legacy threads have negative IDs until their first reply; reload to pick up the real ID and history.
+ await reloadFeedbackThreads();
+ return Number(d.thread_id||threadId);
+}
+async function submitAdminFeedbackReply(event,threadId){
+ event.preventDefault(); if(window.CURRENT_USER?.role!=='Administrator')return;
+ const form=event.currentTarget; const textarea=form.querySelector('textarea'); const submit=form.querySelector('button[type="submit"]'); const message=(textarea?.value||'').trim();
+ if(!message||submit?.disabled){textarea?.focus();return;}
+ if(message.length>3000){alert('Reply must be 3,000 characters or fewer.');return;}
+ if(submit){submit.disabled=true;submit.dataset.originalText=submit.innerHTML;submit.innerHTML='<span class="material-symbols-outlined">hourglass_top</span>Sending…';}
+ try{
+   const selectedId=await postAdminFeedbackReply(threadId,message);
+   renderAdminFeedbackInterface(selectedId);
+   if(document.getElementById('feedbackDataTableBody'))renderFeedbackDataTable();
+ }catch(e){
+   if(submit){submit.disabled=false;submit.innerHTML=submit.dataset.originalText||'Send Reply';}
+   alert(e.message||'Unable to send reply.');
+ }
 }
 function openAdminFeedbackInterface(){document.getElementById('admin-feedback-panel')?.scrollIntoView({behavior:'smooth',block:'start'});renderAdminFeedbackInterface();}
 async function handleNotificationBell(){
@@ -459,47 +486,19 @@ async function submitFeedbackReplyModal(event,threadId){
  const textarea=form.querySelector('textarea[name="feedback"]');
  const submit=form.querySelector('button[type="submit"]');
  const message=(textarea?.value||'').trim();
- if(!message)return;
- if(submit){
-   submit.disabled=true;
-   submit.dataset.originalHtml=submit.innerHTML;
-   submit.innerHTML='<span class="material-symbols-outlined">hourglass_top</span>Sending…';
- }
- const body=new URLSearchParams({
-   action:'reply',
-   thread_id:String(threadId),
-   feedback:message,
-   csrf_token:String(window.CSRF_TOKEN||''),
-   return_to:window.location.pathname+window.location.search
- });
+ if(!message){textarea?.focus();return;}
+ if(message.length>3000){alert('Reply must be 3,000 characters or fewer.');return;}
+ if(submit?.disabled)return;
+ if(submit){submit.disabled=true;submit.dataset.originalHtml=submit.innerHTML;submit.innerHTML='<span class="material-symbols-outlined">hourglass_top</span>Sending…';}
  try{
-   const r=await fetch(`${window.APP_BASE||''}/includes/feedback.php`,{
-     method:'POST',
-     credentials:'same-origin',
-     headers:{
-       'X-Requested-With':'XMLHttpRequest',
-       'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'
-     },
-     body:body.toString()
-   });
-   const d=await r.json().catch(()=>({ok:false,message:'Invalid server response.'}));
-   if(!r.ok||!d.ok)throw new Error(d.message||'Unable to send reply.');
-   // Reload from the server so a legacy notification that was just materialized
-   // is replaced by its real feedback_threads ID and complete message history.
-   try{
-     const rr=await fetch(`${window.APP_BASE||''}/includes/feedback_threads.php`,{credentials:'same-origin',headers:{'X-Requested-With':'XMLHttpRequest'},cache:'no-store'});
-     const rd=await rr.json();
-     if(rr.ok&&rd.ok&&Array.isArray(rd.threads))window.FEEDBACK_THREADS=rd.threads;
-   }catch(_e){}
-   const selectedId=Number(d.thread_id||threadId);
+   const selectedId=await postAdminFeedbackReply(threadId,message);
    closeModal();
-   if(document.getElementById('adminFeedbackWorkspace')) renderAdminFeedbackInterface(selectedId);
-   else showNotificationModal(false);
+   // Refresh whichever view the Reply button was clicked from.
+   if(document.getElementById('adminFeedbackWorkspace'))renderAdminFeedbackInterface(selectedId);
+   if(document.getElementById('feedbackDataTableBody')){renderFeedbackDataTable();if(selectedId)showFeedbackThread(selectedId);}
+   else if(!document.getElementById('adminFeedbackWorkspace'))showNotificationModal(false);
  }catch(e){
-   if(submit){
-     submit.disabled=false;
-     submit.innerHTML=submit.dataset.originalHtml||'Send Reply';
-   }
+   if(submit){submit.disabled=false;submit.innerHTML=submit.dataset.originalHtml||'Send Reply';}
    alert(e.message||'Unable to send reply.');
  }
 }
