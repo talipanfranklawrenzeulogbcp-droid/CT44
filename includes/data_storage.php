@@ -4,6 +4,7 @@ require_once __DIR__.'/service_client.php';
 require_login();
 $storage=service('storage');
 $action=(string)($_POST['action'] ?? $_GET['action'] ?? 'list');
+if ($_SERVER['REQUEST_METHOD']==='POST') verify_csrf();
 
 if($action==='list'){
     header('Content-Type: application/json; charset=utf-8');
@@ -23,6 +24,7 @@ if($action==='download_all'){
         $name=(string)$file['file_name'];
         $base=$name; $i=1;
         while(isset($used[$name])){ $name=pathinfo($base,PATHINFO_FILENAME).'_'.$i.(pathinfo($base,PATHINFO_EXTENSION)?'.'.pathinfo($base,PATHINFO_EXTENSION):''); $i++; }
+        $name=ltrim(str_replace(['\\','/'], '_', $name), '.');
         $used[$name]=true;
         $zip->addFromString($name,(string)$file['file_data']);
     }
@@ -43,7 +45,9 @@ if($action==='view' || $action==='download'){
     header('Content-Type: '.($file['file_type']?:'application/octet-stream'));
     header('Content-Length: '.strlen((string)$file['file_data']));
     header('X-Content-Type-Options: nosniff');
-    header('Content-Disposition: '.($action==='download'?'attachment':'inline').'; filename="'.$safeName.'"');
+    $mime=(string)($file['file_type']?:'application/octet-stream');
+    $inlineAllowed=in_array(strtolower($mime),['application/pdf','image/png','image/jpeg','image/gif','image/webp'],true);
+    header('Content-Disposition: '.($action==='download' || !$inlineAllowed ? 'attachment' : 'inline').'; filename="'.$safeName.'"');
     echo $file['file_data'];
     exit;
 }
@@ -112,15 +116,23 @@ if($_SERVER['REQUEST_METHOD']==='POST' && $action==='upload'){
         $userId = (int)($u['id'] ?? 0);
         $storage->save($fileName,$mime,$sourceBranch,$userId,$data);
 
-        // Notify other active staff (and admins when staff uploaded) that a new transfer is available.
-        try {
-        $notes=service('notifications');
+        // Notify active staff accounts that a new data/file transfer is available.
+        $staffIds=db()->query("SELECT id FROM users WHERE role='Staff' AND active=1")->fetchAll(PDO::FETCH_COLUMN);
         $title='New Data/File Transfer';
-        $message='A new data/file has been transferred to Data Storage from '.$sourceBranch.': '.$fileName;
-        $sender=['id'=>$userId,'name'=>(string)($u['name']??'User'),'role'=>(string)($u['role']??'Staff')];
-        $notes->notifyRole('Staff','data_transfer',$title,$message,$sender,$userId);
-        if (($u['role'] ?? '') === 'Staff') $notes->notifyRole('Administrator','data_transfer',$title,$message,$sender,$userId);
-        } catch(Throwable $e) { error_log('CT4 transfer notification failed: '.$e->getMessage()); }
+        $message='A new data/file has been transferred to Data Storage'.($sourceBranch!==''?' from '.$sourceBranch:'').': '.$fileName;
+        $notice=db()->prepare("INSERT INTO admin_notifications (user_id,type,title,message,sender_name,sender_role,sender_user_id) VALUES (?,?,?,?,?,?,?)");
+        foreach($staffIds as $staffId){
+            if((int)$staffId === $userId) continue;
+            $notice->execute([(int)$staffId,'data_transfer',$title,$message,(string)($u['name']??'User'),(string)($u['role']??'Staff'),$userId?:null]);
+        }
+        // If uploaded by staff, also notify administrators
+        if (($u['role'] ?? '') === 'Staff') {
+            $adminIds=db()->query("SELECT id FROM users WHERE role='Administrator' AND active=1")->fetchAll(PDO::FETCH_COLUMN);
+            foreach($adminIds as $adminId){
+                if((int)$adminId === $userId) continue;
+                $notice->execute([(int)$adminId,'data_transfer',$title,$message,(string)($u['name']??'User'),(string)($u['role']??'Staff'),$userId?:null]);
+            }
+        }
 
         audit('Data Storage','Upload File',$fileName);
         flash('success','Data/file stored successfully.');
