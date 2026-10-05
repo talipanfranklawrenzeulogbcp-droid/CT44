@@ -30,32 +30,6 @@ function require_login(): void {
 }
 
 
-/**
- * For background polling (e.g. the notification badge). Validates the session and
- * the 5-minute inactivity limit WITHOUT refreshing last_activity, so polling can
- * never keep an idle session alive. Responds with JSON 401 instead of redirecting.
- */
-function require_login_passive(): void {
-    $limit = 5 * 60;
-    $last = (int)($_SESSION['last_activity'] ?? 0);
-    if (!current_user() || (time() - $last) >= $limit) {
-        http_response_code(401);
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode(['ok'=>false,'error'=>'Session expired']);
-        exit;
-    }
-}
-
-function csrf_token(): string {
-    if (empty($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-    return (string)$_SESSION['csrf_token'];
-}
-
-function csrf_valid(): bool {
-    $sent = (string)($_POST['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
-    return $sent !== '' && hash_equals(csrf_token(), $sent);
-}
-
 function require_admin(): void {
     require_login();
     $u=current_user();

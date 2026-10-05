@@ -48,7 +48,8 @@ The login now uses password + a 6-digit OTP before opening the dashboard.
 - Administrator name: `Admin`
 - Administrator password: `ISMERSCT4`
 
-For production, set the Gmail App Password through the server environment variables `GSMS_MAIL_USERNAME` and `GSMS_MAIL_PASSWORD`.
+For production, move the Gmail App Password from `includes/config.php` to environment variables:
+`GSMS_MAIL_USERNAME` and `GSMS_MAIL_PASSWORD`.
 
 
 ---
@@ -78,7 +79,7 @@ Set these variables on the PHP server (not in JavaScript or a public file):
 - `GEMINI_API_KEY` — your Gemini API key
 - `GEMINI_MODEL` — defaults to `gemini-3.8-flash`
 
-See `.env.example` for the names only. The package does not include a live `.env` file or API key. Copy `.env.example` to `.env` for local development, fill in your own secrets, and never commit `.env`.
+See `.env.example` for the names only. For the supplied local build, the Gemini key is stored in the server-only `.env` file and is never sent to browser JavaScript. Rotate the supplied key after testing because it was shared during setup.
 
 
 ## CT4 Authentication and Gmail OTP
@@ -92,15 +93,3 @@ Import `database/database.sql` into MySQL before first use. PHP must have OpenSS
 
 ## Role-based access
 Staff accounts can access Reports, Analysis & Dashboard, AI System Assistant, Health, Safety & Welfare, Legal & Compliance, and Asset & Equipment Issuance. System Administration & Security is administrator-only. Administrator dashboards include staff activity tracking for the Health, Safety & Welfare, Legal & Compliance, and Asset & Equipment Issuance modules through audit records.
-
-
-## Notifications & Feedback (v2)
-- **Notification Service** (`services/NotificationService.php`) owns the `admin_notifications` table; **Feedback Service** (`services/FeedbackService.php`) handles feedback and replies. Endpoint: `includes/notifications.php`.
-- Per-notification read state: opening the bell no longer marks everything read. Click a card to mark it read, or use **Mark all read**. Direct notifications can be dismissed.
-- Filters: All / Unread, plus a **Feedback Inbox** tab for administrators. Older items load on demand (no more embedding 50 rows in every page).
-- Live badge: unread count refreshes every 60 s while the tab is visible. Polling is *passive* and never extends the 5-minute inactivity logout.
-- Feedback now has a category, optional 1–5 rating, character counter, spam limits (5/hour, no duplicates), and a **My Feedback** tab showing status (Open / Replied / Resolved) and admin replies.
-- Feedback goes to a shared inbox seen by **all** active administrators (previously tied to the first admin). Admins can reply multiple times and mark feedback Resolved/Reopen; the author is notified. Replies are no longer sent to an arbitrary staff account when the author can't be identified.
-- New notifications: administrators are told when staff submit a file request. Duplicate admin rows for data transfers are fixed.
-- CSRF tokens protect feedback and notification actions.
-- Database: additive columns on `admin_notifications` (`category`, `rating`, `parent_id`, `status`, `is_dismissed`) plus two indexes. They are applied automatically on first request (`includes/db.php`) and are included in `database/database.sql`. No existing data is changed.

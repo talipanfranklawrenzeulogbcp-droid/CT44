@@ -30,20 +30,6 @@ function db(): PDO {
         $pdo->exec("ALTER TABLE compliance_obligations ADD COLUMN IF NOT EXISTS reported_at DATETIME NULL AFTER compliance_note");
     } catch (Throwable $e) { /* Retry on next request — initial schema may not exist yet */ }
 
-    // Notification & feedback upgrade (additive only; existing rows are untouched).
-    try {
-        $needsUpgrade = $pdo->query("SHOW COLUMNS FROM admin_notifications LIKE 'is_dismissed'")->fetch() === false;
-        if ($needsUpgrade) {
-        $pdo->exec("ALTER TABLE admin_notifications ADD COLUMN IF NOT EXISTS category VARCHAR(40) NULL AFTER message");
-        $pdo->exec("ALTER TABLE admin_notifications ADD COLUMN IF NOT EXISTS rating TINYINT UNSIGNED NULL AFTER category");
-        $pdo->exec("ALTER TABLE admin_notifications ADD COLUMN IF NOT EXISTS parent_id BIGINT UNSIGNED NULL AFTER rating");
-        $pdo->exec("ALTER TABLE admin_notifications ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'open' AFTER parent_id");
-        $pdo->exec("ALTER TABLE admin_notifications ADD COLUMN IF NOT EXISTS is_dismissed TINYINT(1) NOT NULL DEFAULT 0 AFTER is_read");
-        $pdo->exec("ALTER TABLE admin_notifications ADD INDEX IF NOT EXISTS idx_notification_parent (parent_id)");
-        $pdo->exec("ALTER TABLE admin_notifications ADD INDEX IF NOT EXISTS idx_notification_inbox (user_id,is_dismissed,is_read,created_at)");
-        }
-    } catch (Throwable $e) { /* Retry on next request */ }
-
     // Legacy roles are normalised to Staff; only Administrator and Staff are supported.
     try {
         $pdo->exec("UPDATE users SET role='Staff' WHERE role NOT IN ('Administrator','Staff')");

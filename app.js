@@ -23,189 +23,64 @@ document.addEventListener('click',e=>{
  if(wrap && !wrap.contains(e.target)) document.getElementById('userMenu')?.classList.remove('open');
 });
 
-/* ===== CT4 Notifications & Feedback (v2) ===== */
-const NOTIF_ICONS={feedback:'rate_review',feedback_reply:'reply',data_transfer:'folder_data',file_release:'task',file_request:'description',system:'info'};
-const NOTIF_LABELS={feedback:'Feedback',feedback_reply:'Reply',data_transfer:'Data Transfer',file_release:'File Release',file_request:'File Request',system:'System'};
-const NOTIF_STATE={filter:'all',items:[],hasMore:false,busy:false,timer:null};
-function isAdminUser(){return window.CURRENT_USER?.role==='Administrator';}
-function apiUrl(path){return `${window.APP_BASE||''}/includes/${path}`;}
-function apiPost(path,data){
-  const fd=new FormData(); Object.entries(data||{}).forEach(([k,v])=>fd.append(k,v)); fd.append('csrf_token',window.CSRF_TOKEN||'');
-  return fetch(apiUrl(path),{method:'POST',body:fd,credentials:'same-origin',headers:{'X-Requested-With':'XMLHttpRequest','X-CSRF-Token':window.CSRF_TOKEN||''}}).then(r=>r.json().catch(()=>({ok:false,error:'Invalid server response.'})));
-}
-function apiGet(path){return fetch(apiUrl(path),{credentials:'same-origin',headers:{'X-Requested-With':'XMLHttpRequest'}}).then(r=>r.json().catch(()=>({ok:false,error:'Invalid server response.'})));}
-function parseServerDate(v){const d=new Date(String(v||'').replace(' ','T'));return isNaN(d.getTime())?null:d;}
-function timeAgo(v){
-  const d=parseServerDate(v); if(!d)return escapeHtml(v||'');
-  const s=Math.max(0,Math.floor((Date.now()-d.getTime())/1000));
-  if(s<60)return 'Just now'; if(s<3600)return Math.floor(s/60)+' min ago'; if(s<86400)return Math.floor(s/3600)+' hr ago';
-  if(s<604800)return Math.floor(s/86400)+' d ago'; return d.toLocaleDateString();
-}
-function fullTime(v){const d=parseServerDate(v);return d?d.toLocaleString():String(v||'');}
-function setUnread(n){
-  n=Math.max(0,Number(n)||0); window.NOTIF_UNREAD=n;
-  const label=n>99?'99+':String(n);
-  const b=document.getElementById('notifMenuBadge'); if(b){b.textContent=label;b.hidden=n===0;}
-  const d=document.getElementById('notifDot'); if(d)d.hidden=n===0;
-  document.title=document.title.replace(/^\(\d+\+?\)\s*/,'');
-  if(n>0)document.title=`(${label}) ${document.title}`;
-}
-function starsHtml(r){r=Number(r)||0;if(r<1)return '';return `<span class="fb-stars" title="${r} out of 5">${'★'.repeat(r)}<i>${'★'.repeat(5-r)}</i></span>`;}
-function statusBadge(s){s=s||'open';return `<span class="fb-status ${escapeHtml(s)}">${escapeHtml(s.charAt(0).toUpperCase()+s.slice(1))}</span>`;}
-function repliesHtml(list){
-  if(!list||!list.length)return '';
-  return `<div class="fb-thread">${list.map(r=>`<div class="fb-reply"><div class="fb-reply-head"><strong>${escapeHtml(r.sender_name||'Administrator')}</strong><small title="${escapeHtml(fullTime(r.created_at))}">${timeAgo(r.created_at)}</small></div><p>${escapeHtml(r.message||'')}</p></div>`).join('')}</div>`;
-}
-function notificationCard(n){
-  const unread=Number(n.is_read)===0, isFb=n.type==='feedback';
-  const canDismiss=!isFb && n.user_id!==null && n.user_id!==undefined;
-  const meta=[];
-  if(isFb&&n.category)meta.push(`<span class="fb-chip">${escapeHtml(n.category)}</span>`);
-  if(isFb)meta.push(statusBadge(n.status)); if(isFb&&n.rating)meta.push(starsHtml(n.rating));
-  let actions='';
-  if(isFb&&isAdminUser()){
-    actions=`<div class="notification-actions"><button type="button" class="gw-btn secondary" data-nact="resolve" data-id="${Number(n.id)}" data-status="${n.status==='resolved'?'open':'resolved'}"><span class="material-symbols-outlined">${n.status==='resolved'?'undo':'task_alt'}</span>${n.status==='resolved'?'Reopen':'Mark Resolved'}</button><button type="button" class="gw-btn secondary" data-nact="reply" data-id="${Number(n.id)}"><span class="material-symbols-outlined">reply</span>Reply</button></div>`;
-  }
-  return `<div class="notification-card ${unread?'unread':''}" data-id="${Number(n.id)}" data-unread="${unread?1:0}">
-    <div class="notification-card-head"><div class="notif-type-icon ${escapeHtml(n.type||'system')}"><span class="material-symbols-outlined">${NOTIF_ICONS[n.type]||'notifications'}</span></div>
-      <div class="notif-head-main"><strong>${escapeHtml(n.title||'Notification')}</strong><span>${escapeHtml(n.sender_name||'System')} · ${escapeHtml(n.sender_role||'System')}</span></div>
-      <small title="${escapeHtml(fullTime(n.created_at))}">${timeAgo(n.created_at)}</small>
-      ${canDismiss?`<button type="button" class="notif-dismiss" data-nact="dismiss" data-id="${Number(n.id)}" aria-label="Dismiss" title="Dismiss"><span class="material-symbols-outlined">close</span></button>`:''}</div>
-    ${meta.length?`<div class="fb-meta">${meta.join('')}</div>`:''}
-    <p>${escapeHtml(n.message||'')}</p>${repliesHtml(n.replies)}${actions}</div>`;
-}
-function notifTabs(){
-  const tabs=[['all','All'],['unread','Unread']]; if(isAdminUser())tabs.push(['feedback','Feedback Inbox']);
-  return tabs.map(([k,l])=>`<button type="button" class="notif-tab ${NOTIF_STATE.filter===k?'active':''}" data-nact="tab" data-tab="${k}">${l}</button>`).join('');
-}
 function showNotificationModal(){
-  document.getElementById('userMenu')?.classList.remove('open');
-  const root=document.getElementById('modalRoot'); if(!root)return;
-  const admin=isAdminUser();
-  const subtitle=admin?'Staff feedback, file requests and data transfers.':'Transferred data/files, file releases and replies to your feedback.';
-  NOTIF_STATE.filter='all';
-  root.innerHTML=`<div class="gw-modal-backdrop" onclick="if(event.target===this)closeModal()"><div class="gw-modal notifications-modal" id="notifModal">
-    <div class="gw-modal-head"><div><strong>${admin?'Admin Notifications':'Notifications'}</strong><small>${subtitle}</small></div><button class="gw-modal-close" onclick="closeModal()" aria-label="Close">×</button></div>
-    <div class="gw-modal-body"><div class="notif-toolbar"><div class="notif-tabs" id="notifTabs">${notifTabs()}</div><button type="button" class="gw-btn secondary" data-nact="read_all"><span class="material-symbols-outlined">done_all</span>Mark all read</button></div>
-    <div class="notification-list" id="notifList"><div class="data-storage-loading"><span class="material-symbols-outlined">progress_activity</span>Loading notifications...</div></div>
-    <div class="record-actions"><button class="gw-btn primary" onclick="closeModal()">Close</button></div></div></div></div>`;
-  loadNotifications(true);
+ document.getElementById('userMenu')?.classList.remove('open');
+ const root=document.getElementById('modalRoot'); if(!root)return;
+ const isStaff=window.CURRENT_USER?.role==='Staff';
+ const notes=isStaff?(Array.isArray(window.STAFF_NOTIFICATIONS)?window.STAFF_NOTIFICATIONS:[]):(Array.isArray(window.ADMIN_NOTIFICATIONS)?window.ADMIN_NOTIFICATIONS:[]);
+ const title=isStaff?'Notifications':'Admin Notifications';
+ const subtitle=isStaff?'Transferred data/files and replies to your feedback.':'Feedback received from staff members.';
+ const empty=isStaff?'No notifications yet':'No staff feedback yet';
+ const body=notes.length ? notes.map(n=>{
+   const unread=Number(n.is_read)===0;
+   const date=new Date(String(n.created_at).replace(' ','T'));
+   const when=isNaN(date.getTime())?escapeHtml(n.created_at||''):date.toLocaleString();
+   const reply=(window.CURRENT_USER?.role==='Administrator' && (n.type==='feedback' || !n.type))
+     ? `<div class="notification-actions"><button type="button" class="gw-btn secondary" onclick="showFeedbackReply(${Number(n.id)},${JSON.stringify(String(n.sender_name||'Staff'))},${JSON.stringify(String(n.sender_role||'Staff'))},${JSON.stringify(String(n.message||''))},${Number(n.sender_user_id||0)})"><span class="material-symbols-outlined">reply</span>Reply</button></div>` : '';
+   return `<div class="notification-card ${unread?'unread':''}">
+     <div class="notification-card-head"><div><strong>${escapeHtml(n.title||'Notification')}</strong><span>${escapeHtml(n.sender_name||'System')} · ${escapeHtml(n.sender_role||'System')}</span></div><small>${escapeHtml(when)}</small></div>
+     <p>${escapeHtml(n.message||'')}</p>${reply}
+   </div>`;
+ }).join('') : `<div class="notification-empty"><span class="material-symbols-outlined">notifications_none</span><strong>${empty}</strong><p>${escapeHtml(subtitle)}</p></div>`;
+ root.innerHTML=`<div class="gw-modal-backdrop" onclick="if(event.target===this)closeModal()"><div class="gw-modal notifications-modal">
+   <div class="gw-modal-head"><div><strong>${title}</strong><small>${subtitle}</small></div><button class="gw-modal-close" onclick="closeModal()" aria-label="Close">×</button></div>
+   <div class="gw-modal-body"><div class="notification-list">${body}</div><div class="record-actions"><button class="gw-btn primary" onclick="closeModal()">Close</button></div></div>
+ </div></div>`;
+ fetch(`${window.APP_BASE||''}/includes/mark_notifications_read.php`,{method:'POST',headers:{'X-Requested-With':'XMLHttpRequest'},credentials:'same-origin'}).catch(()=>{});
+ document.querySelector('.notification-badge')?.remove();
 }
-function renderNotifList(append){
-  const box=document.getElementById('notifList'); if(!box)return;
-  const tabs=document.getElementById('notifTabs'); if(tabs)tabs.innerHTML=notifTabs();
-  const feedbackTab=NOTIF_STATE.filter==='feedback';
-  if(!NOTIF_STATE.items.length){
-    box.innerHTML=`<div class="notification-empty"><span class="material-symbols-outlined">${NOTIF_STATE.filter==='unread'?'mark_email_read':'notifications_none'}</span><strong>${NOTIF_STATE.filter==='unread'?'You are all caught up':feedbackTab?'No feedback yet':'No notifications yet'}</strong><p>${NOTIF_STATE.filter==='unread'?'There is nothing unread.':feedbackTab?'Feedback from staff will appear here.':'New activity will appear here.'}</p></div>`; return;
-  }
-  box.innerHTML=NOTIF_STATE.items.map(notificationCard).join('')+(NOTIF_STATE.hasMore?`<button type="button" class="gw-btn secondary notif-more" data-nact="more">Load older</button>`:'');
-}
-function loadNotifications(reset){
-  if(NOTIF_STATE.busy)return; NOTIF_STATE.busy=true;
-  const f=NOTIF_STATE.filter, last=NOTIF_STATE.items.length?NOTIF_STATE.items[NOTIF_STATE.items.length-1].id:0;
-  const before=reset?'':(last?`&before_id=${Number(last)}`:'');
-  const url=f==='feedback'?`notifications.php?action=feedback_inbox${before}`:`notifications.php?action=list&filter=${f==='unread'?'unread':''}${before}`;
-  apiGet(url).then(d=>{
-    if(!d.ok)throw new Error(d.error||'Unable to load notifications.');
-    NOTIF_STATE.items=reset?d.items:NOTIF_STATE.items.concat(d.items); NOTIF_STATE.hasMore=!!d.has_more;
-    if(typeof d.unread==='number')setUnread(d.unread);
-    renderNotifList();
-  }).catch(e=>{const box=document.getElementById('notifList');if(box)box.innerHTML=`<div class="notification-empty"><span class="material-symbols-outlined">error</span><strong>Unable to load notifications</strong><p>${escapeHtml(e.message||'Please try again.')}</p></div>`;})
-  .finally(()=>{NOTIF_STATE.busy=false;});
-}
-document.addEventListener('click',e=>{
-  const btn=e.target.closest('[data-nact]');
-  if(btn&&btn.closest('#notifModal')){
-    const act=btn.dataset.nact, id=Number(btn.dataset.id||0);
-    if(act==='tab'){NOTIF_STATE.filter=btn.dataset.tab;NOTIF_STATE.items=[];loadNotifications(true);return;}
-    if(act==='more'){loadNotifications(false);return;}
-    if(act==='read_all'){apiPost('notifications.php',{action:'read_all'}).then(d=>{if(d.ok){setUnread(0);NOTIF_STATE.items.forEach(n=>{n.is_read=1;});if(NOTIF_STATE.filter==='unread'){NOTIF_STATE.items=[];}renderNotifList();}});return;}
-    if(act==='dismiss'){e.stopPropagation();apiPost('notifications.php',{action:'dismiss',id}).then(d=>{if(d.ok){NOTIF_STATE.items=NOTIF_STATE.items.filter(n=>Number(n.id)!==id);setUnread(d.unread);renderNotifList();}});return;}
-    if(act==='resolve'){e.stopPropagation();apiPost('notifications.php',{action:'feedback_status',id,status:btn.dataset.status}).then(d=>{if(!d.ok)return showModal('Unable to update',d.error||'Please try again.');NOTIF_STATE.items=[];loadNotifications(true);});return;}
-    if(act==='reply'){e.stopPropagation();const n=NOTIF_STATE.items.find(x=>Number(x.id)===id)||{};showFeedbackReply(id,n.sender_name||'Staff',n.sender_role||'Staff',n.message||'');return;}
-  }
-  const card=e.target.closest('#notifList .notification-card');
-  if(card&&card.dataset.unread==='1'){
-    const id=Number(card.dataset.id); card.classList.remove('unread'); card.dataset.unread='0';
-    const n=NOTIF_STATE.items.find(x=>Number(x.id)===id); if(n)n.is_read=1;
-    apiPost('notifications.php',{action:'read',id}).then(d=>{if(d.ok)setUnread(d.unread);});
-  }
-});
-/* Live badge: passive polling never extends the 5-minute inactivity timer (server uses require_login_passive). */
-(function(){
-  let stopped=false, last=null;
-  function poll(){
-    if(stopped||document.hidden)return;
-    apiGet('notifications.php?action=count').then(d=>{
-      if(!d||d.ok!==true){ if(d&&d.error==='Session expired')stopped=true; return; }
-      if(last!==null&&d.unread>last){document.getElementById('notifDot')?.classList.add('pulse');setTimeout(()=>document.getElementById('notifDot')?.classList.remove('pulse'),2500);
-        if(document.getElementById('notifModal')&&NOTIF_STATE.filter!=='feedback'){NOTIF_STATE.items=[];loadNotifications(true);}}
-      last=d.unread; setUnread(d.unread);
-    }).catch(()=>{});
-  }
-  function init(){
-    const role=window.CURRENT_USER?.role; if(role!=='Administrator'&&role!=='Staff')return;
-    last=Number(window.NOTIF_UNREAD)||0;
-    setInterval(poll,60000);
-    document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll();});
-  }
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
-})();
 function showFeedbackReply(notificationId,staffName,staffRole,originalMessage){
  closeModal();
  showFeedbackModal({replyTo:Number(notificationId),recipientName:staffName,recipientRole:staffRole,originalMessage:originalMessage});
 }
 function showFeedbackSentModal(){
-  const root=document.getElementById('modalRoot'); if(!root)return;
-  root.innerHTML=`<div class="gw-modal-backdrop"><div class="gw-modal feedback-sent-modal">
-    <div class="feedback-sent-icon"><span class="material-symbols-outlined">mark_email_read</span></div>
-    <div class="gw-modal-body feedback-sent-body"><strong>Success</strong><p>Your message has been sent successfully.</p><button class="gw-btn primary" onclick="closeModal()">Done</button></div>
-  </div></div>`;
+ const root=document.getElementById('modalRoot'); if(!root)return;
+ root.innerHTML=`<div class="gw-modal-backdrop"><div class="gw-modal feedback-sent-modal">
+   <div class="feedback-sent-icon"><span class="material-symbols-outlined">mark_email_read</span></div>
+   <div class="gw-modal-body feedback-sent-body"><strong>Success</strong><p>Your message has been sent successfully.</p><button class="gw-btn primary" onclick="closeModal()">Done</button></div>
+ </div></div>`;
 }
-const FEEDBACK_CATEGORIES=['Suggestion','Problem / Bug','Compliment','Question','Other'];
+
 function showFeedbackModal(replyContext=null){
  document.getElementById('userMenu')?.classList.remove('open');
  const root=document.getElementById('modalRoot'); if(!root)return;
  const user=window.CURRENT_USER||{name:'User',role:'Staff'};
  const replying=!!replyContext;
- const recipientName=replyContext?.recipientName||'', recipientRole=replyContext?.recipientRole||'', original=replyContext?.originalMessage||'';
- const extra=replying?'':`<div class="feedback-account-grid"><div class="feedback-readonly-field"><label for="fbCategory">Category</label><select id="fbCategory" name="category" class="edit-user-input">${FEEDBACK_CATEGORIES.map(c=>`<option>${c}</option>`).join('')}</select></div><div class="feedback-readonly-field"><label>Overall experience <small style="font-weight:500;color:#94a3b8">(optional)</small></label><div class="fb-rate" id="fbRate" role="radiogroup" aria-label="Rating">${[1,2,3,4,5].map(i=>`<button type="button" data-r="${i}" aria-label="${i} star${i>1?'s':''}">★</button>`).join('')}</div><input type="hidden" name="rating" id="fbRating" value=""></div></div>`;
+ const recipientName=replyContext?.recipientName||'';
+ const recipientRole=replyContext?.recipientRole||'';
+ const original=replyContext?.originalMessage||'';
  root.innerHTML=`<div class="gw-modal-backdrop" onclick="if(event.target===this)closeModal()"><div class="gw-modal feedback-modal">
  <div class="gw-modal-head"><div><strong>${replying?'Reply to Feedback':'Send Feedback'}</strong><small>${replying?'Send a response directly to '+escapeHtml(recipientName)+'.':'Help us improve the Great Solomon Manpower Services system.'}</small></div><button class="gw-modal-close" onclick="closeModal()" aria-label="Close">×</button></div>
  <div class="gw-modal-body">
- ${replying?'':`<div class="notif-tabs fb-modal-tabs"><button type="button" class="notif-tab active" id="fbTabNew">New Feedback</button><button type="button" class="notif-tab" id="fbTabMine">My Feedback</button></div>`}
- <div id="fbPaneNew">
  ${replying?`<div class="feedback-reply-context"><strong>Original feedback from ${escapeHtml(recipientName)} (${escapeHtml(recipientRole)})</strong><p>${escapeHtml(original)}</p></div>`:`<div class="feedback-intro"><span class="material-symbols-outlined">rate_review</span><div><strong>Your account details are automatic</strong><p>Your name and role are taken from the account currently signed in.</p></div></div>`}
  <form method="post" action="${window.APP_BASE||''}/includes/feedback.php">
- <input type="hidden" name="csrf_token" value="${escapeHtml(window.CSRF_TOKEN||'')}">
  <input type="hidden" name="return_to" value="${escapeHtml(window.location.pathname + window.location.search)}">
  ${replying?`<input type="hidden" name="action" value="reply"><input type="hidden" name="notification_id" value="${Number(replyContext.replyTo)}">`:''}
  <div class="feedback-account-grid"><div class="feedback-readonly-field"><label>${replying?'From':'Name'}</label><div class="feedback-readonly-value"><span class="material-symbols-outlined">person</span>${escapeHtml(user.name)}</div></div><div class="feedback-readonly-field"><label>${replying?'To':'Role'}</label><div class="feedback-readonly-value"><span class="material-symbols-outlined">${replying?'person':'badge'}</span>${escapeHtml(replying?recipientName:user.role)}</div></div></div>
- ${extra}
- <div class="feedback-message-field"><label for="feedbackText">${replying?'Reply':'Your Feedback'}</label><textarea id="feedbackText" name="feedback" rows="7" required minlength="${replying?1:5}" maxlength="3000" placeholder="${replying?'Write your reply...':'Tell us what worked well, what should be improved, or if you found a problem...'}"></textarea><div class="feedback-helper"><span>Please avoid including passwords or other sensitive information.</span><span id="fbCount" class="fb-count">0 / 3000</span></div></div>
+ <div class="feedback-message-field"><label for="feedbackText">${replying?'Reply':'Your Feedback'}</label><textarea id="feedbackText" name="feedback" rows="7" required maxlength="3000" placeholder="${replying?'Write your reply...':'Tell us what worked well, what should be improved, or if you found a problem...'}"></textarea><div class="feedback-helper">Please avoid including passwords or other sensitive information.</div></div>
  <div class="record-actions"><button type="button" class="gw-btn secondary" onclick="closeModal()">Cancel</button><button class="gw-btn primary" type="submit"><span class="material-symbols-outlined">${replying?'reply':'send'}</span>${replying?'Send Reply':'Send Feedback'}</button></div>
- </form></div>
- <div id="fbPaneMine" hidden></div>
- </div></div></div>`;
- const ta=document.getElementById('feedbackText'), cnt=document.getElementById('fbCount');
- ta?.addEventListener('input',()=>{if(cnt)cnt.textContent=`${ta.value.length} / 3000`;});
- document.getElementById('fbRate')?.addEventListener('click',e=>{
-   const b=e.target.closest('button[data-r]'); if(!b)return; const hid=document.getElementById('fbRating');
-   const v=hid.value===b.dataset.r?'':b.dataset.r; hid.value=v;
-   document.querySelectorAll('#fbRate button').forEach(x=>x.classList.toggle('on',Number(x.dataset.r)<=Number(v||0)));
- });
- const tabNew=document.getElementById('fbTabNew'), tabMine=document.getElementById('fbTabMine');
- tabNew?.addEventListener('click',()=>{tabNew.classList.add('active');tabMine.classList.remove('active');document.getElementById('fbPaneNew').hidden=false;document.getElementById('fbPaneMine').hidden=true;});
- tabMine?.addEventListener('click',()=>{
-   tabMine.classList.add('active');tabNew.classList.remove('active');document.getElementById('fbPaneNew').hidden=true;
-   const pane=document.getElementById('fbPaneMine'); pane.hidden=false;
-   pane.innerHTML='<div class="data-storage-loading"><span class="material-symbols-outlined">progress_activity</span>Loading your feedback...</div>';
-   apiGet('notifications.php?action=my_feedback').then(d=>{
-     if(!d.ok)throw new Error(d.error||'Unable to load.');
-     pane.innerHTML=d.items.length?`<div class="notification-list">${d.items.map(f=>`<div class="notification-card"><div class="fb-meta">${f.category?`<span class="fb-chip">${escapeHtml(f.category)}</span>`:''}${statusBadge(f.status)}${starsHtml(f.rating)}<small class="fb-when" title="${escapeHtml(fullTime(f.created_at))}">${timeAgo(f.created_at)}</small></div><p>${escapeHtml(f.message)}</p>${repliesHtml(f.replies)}</div>`).join('')}</div>`:'<div class="notification-empty"><span class="material-symbols-outlined">forum</span><strong>No feedback sent yet</strong><p>Feedback you send, and any replies, will appear here.</p></div>';
-   }).catch(e=>{pane.innerHTML=`<div class="notification-empty"><strong>${escapeHtml(e.message)}</strong></div>`;});
- });
- setTimeout(()=>ta?.focus(),50);
+ </form></div></div></div>`;
+ setTimeout(()=>document.getElementById('feedbackText')?.focus(),50);
 }
 function showTermsModal(){
  document.getElementById('userMenu')?.classList.remove('open');
