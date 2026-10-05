@@ -233,7 +233,7 @@ function admin_feedback_notifications(): array {
         $u=current_user(); if(!$u || ($u['role']??'')!=='Administrator') return [];
         $q=db()->prepare("SELECT n.id,n.type,n.sender_name,n.sender_role,n.sender_user_id,n.title,n.message,n.is_read,n.created_at,n.reply_to_id,n.feedback_thread_id
                           FROM admin_notifications n
-                          WHERE (n.user_id=? OR n.user_id IS NULL) AND n.type IN ('feedback','data_transfer')
+                          WHERE (n.user_id=? OR n.user_id IS NULL) AND n.type IN ('feedback','feedback_reply','data_transfer')
                           ORDER BY n.created_at DESC,n.id DESC LIMIT 100");
         $q->execute([(int)$u['id']]); return $q->fetchAll();
     }catch(Throwable $e){return [];}
@@ -242,9 +242,9 @@ function unread_notification_count(): int {
     try{
         $u=current_user(); if(!$u)return 0;
         if(($u['role']??'')==='Administrator'){
-            $q=db()->prepare("SELECT COUNT(*) FROM admin_notifications WHERE is_read=0 AND (user_id=? OR user_id IS NULL) AND type IN ('feedback','data_transfer')");
+            $q=db()->prepare("SELECT COUNT(*) FROM admin_notifications WHERE is_read=0 AND (user_id=? OR user_id IS NULL) AND type IN ('feedback','feedback_reply','data_transfer')");
         }else{
-            $q=db()->prepare("SELECT COUNT(*) FROM admin_notifications WHERE is_read=0 AND (user_id=? OR user_id IS NULL) AND type IN ('data_transfer')");
+            $q=db()->prepare("SELECT COUNT(*) FROM admin_notifications WHERE is_read=0 AND (user_id=? OR user_id IS NULL) AND type IN ('data_transfer','feedback_reply')");
         }
         $q->execute([(int)$u['id']]); return (int)$q->fetchColumn();
     }catch(Throwable $e){return 0;}
@@ -254,7 +254,7 @@ function staff_transfer_notifications(): array {
         $u=current_user(); if(!$u || ($u['role']??'')!=='Staff')return [];
         $q=db()->prepare("SELECT n.id,n.type,n.sender_name,n.sender_role,n.sender_user_id,n.title,n.message,n.is_read,n.created_at,n.reply_to_id,n.feedback_thread_id
                           FROM admin_notifications n
-                          WHERE (n.user_id=? OR n.user_id IS NULL) AND n.type IN ('data_transfer')
+                          WHERE (n.user_id=? OR n.user_id IS NULL) AND n.type IN ('data_transfer','feedback_reply')
                           ORDER BY n.created_at DESC,n.id DESC LIMIT 100");
         $q->execute([(int)$u['id']]); return $q->fetchAll();
     }catch(Throwable $e){return [];}
@@ -276,7 +276,7 @@ $staffNotifications = (($u['role'] ?? '') === 'Staff') ? staff_transfer_notifica
 </button>
 <div id="userMenu" class="user-dropdown">
 <button type="button" onclick="showDataStorageModal()"><span class="material-symbols-outlined">folder_data</span>Data Storage</button><button type="button" onclick="showArchiveModal()"><span class="material-symbols-outlined">archive</span>Archive</button>
-<?php if (($u['role'] ?? '') === 'Administrator'): ?><button type="button" onclick="showAdminFeedbackModal()"><span class="material-symbols-outlined">feedback</span>Employee Feedback</button><?php elseif (($u['role'] ?? '') === 'Staff'): ?><button type="button" onclick="showFeedbackModal()"><span class="material-symbols-outlined">feedback</span>Feedback</button><?php endif; ?>
+<?php if (($u['role'] ?? '') === 'Staff'): ?><button type="button" onclick="showFeedbackModal()"><span class="material-symbols-outlined">feedback</span>Feedback</button><?php endif; ?>
 <button type="button" onclick="showTermsModal()"><span class="material-symbols-outlined">gavel</span>Terms and Conditions</button>
 <button type="button" onclick="showLogoutModal()"><span class="material-symbols-outlined">logout</span>Logout</button>
 </div>

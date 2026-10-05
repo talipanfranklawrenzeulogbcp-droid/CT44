@@ -148,3 +148,18 @@ Administrators can reply to employee feedback and delete an entire feedback conv
 the feedback inbox. Replies create a conversation message, notify the employee, and update the
 thread status to `Replied`. Deletion removes the thread, cascades its messages, and removes
 notifications associated with that thread. No database schema changes are required.
+
+## OTP / Gmail SMTP deployment
+
+The OTP flow stores the hashed verification code in `otp_requests` **before** attempting email delivery. If SMTP delivery fails, the stored code remains available and the user can use **Resend verification code**.
+
+For Gmail, configure the deployment environment with:
+
+- `GSMS_MAIL_HOST=smtp.gmail.com`
+- `GSMS_MAIL_PORT=587` (STARTTLS) or `465` (implicit TLS)
+- `GSMS_MAIL_USERNAME=your-sender@gmail.com`
+- `GSMS_MAIL_PASSWORD=<16-character Google App Password>`
+- `GSMS_MAIL_FROM_EMAIL=your-sender@gmail.com`
+- `GSMS_OTP_SENDER_EMAIL=your-sender@gmail.com`
+
+`GSMS_MAIL_PASSWORD` must be a Google App Password when using Gmail SMTP; do not put the normal Gmail account password in the deployment. The Administrator-only `auth/otp_diagnostic.php` endpoint can verify SMTP configuration and authentication without exposing the password.

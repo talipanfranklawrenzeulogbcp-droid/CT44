@@ -47,10 +47,13 @@ function smtp_cmd($socket, string $command, array $codes): string {
 
 function smtp_connect_and_auth() {
     if (trim(MAIL_USERNAME) === '' || trim(MAIL_PASSWORD) === '') {
-        throw new RuntimeException('Gmail SMTP username or App Password is not configured.');
+        throw new RuntimeException('Gmail SMTP username or App Password is not configured. Set GSMS_MAIL_USERNAME and GSMS_MAIL_PASSWORD (a Gmail App Password).');
     }
 
     $context = stream_context_create([
+        'socket' => [
+            'tcp_nodelay' => true,
+        ],
         'ssl' => [
             'verify_peer' => true,
             'verify_peer_name' => true,
@@ -107,6 +110,7 @@ function smtp_connect_and_auth() {
             // it is supported by both Gmail SMTP and common managed hosts, then
             // fall back to PLAIN when LOGIN is not advertised.
             $authCaps = strtoupper($ehlo);
+            $authCaps = preg_replace('/\s+/', ' ', $authCaps) ?? $authCaps;
             if (strpos($authCaps, 'AUTH LOGIN') !== false) {
                 smtp_cmd($socket, 'AUTH LOGIN', [334]);
                 smtp_cmd($socket, base64_encode(MAIL_USERNAME), [334]);
@@ -134,7 +138,9 @@ function smtp_connect_and_auth() {
             $message = strtolower($lastError);
             $authFailure = str_contains($message, 'smtp error 535')
                 || str_contains($message, 'authentication')
-                || str_contains($message, 'auth ');
+                || str_contains($message, 'auth ')
+                || str_contains($message, '5.7.8')
+                || str_contains($message, 'invalid credentials');
             if ($authFailure) break;
             continue;
         }

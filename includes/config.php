@@ -114,15 +114,15 @@ define('MAIL_HOST', getenv('GSMS_MAIL_HOST') ?: 'smtp.gmail.com');
 // Gmail supports STARTTLS on 587 and implicit TLS on 465. 587 remains the
 // default for compatibility, while mailer.php can fall back to 465 if a host
 // blocks STARTTLS or the configured port is unavailable.
-define('MAIL_PORT', max(1, (int)(getenv('GSMS_MAIL_PORT') ?: 465)));
-define('MAIL_USERNAME', trim((string)(getenv('GSMS_MAIL_USERNAME') ?: 'governancesafety21@gmail.com')));
-define('MAIL_PASSWORD', (string)(getenv('GSMS_MAIL_PASSWORD') ?: ''));
+define('MAIL_PORT', max(1, (int)(getenv('GSMS_MAIL_PORT') ?: (getenv('MAIL_PORT') ?: 587))));
+define('MAIL_USERNAME', trim((string)(getenv('GSMS_MAIL_USERNAME') ?: (getenv('MAIL_USERNAME') ?: (getenv('GMAIL_SMTP_USERNAME') ?: 'governancesafety21@gmail.com')))));
+define('MAIL_PASSWORD', (string)(getenv('GSMS_MAIL_PASSWORD') ?: (getenv('MAIL_PASSWORD') ?: (getenv('GMAIL_APP_PASSWORD') ?: (getenv('SMTP_PASSWORD') ?: '')))));
 // When the sender is not explicitly configured, use the authenticated Gmail
 // account. A fixed sender address can cause Gmail 553/550 errors when a
 // deployment changes only GSMS_MAIL_USERNAME.
-define('MAIL_FROM_EMAIL', trim((string)(getenv('GSMS_MAIL_FROM_EMAIL') ?: MAIL_USERNAME)));
-define('MAIL_FROM_NAME', getenv('GSMS_MAIL_FROM_NAME') ?: 'Great Solomon Manpower Services Inc. Core Transaction 4');
-define('OTP_SENDER_EMAIL', trim((string)(getenv('GSMS_OTP_SENDER_EMAIL') ?: MAIL_FROM_EMAIL)));
+define('MAIL_FROM_EMAIL', trim((string)(getenv('GSMS_MAIL_FROM_EMAIL') ?: (getenv('MAIL_FROM_EMAIL') ?: MAIL_USERNAME))));
+define('MAIL_FROM_NAME', getenv('GSMS_MAIL_FROM_NAME') ?: (getenv('MAIL_FROM_NAME') ?: 'Great Solomon Manpower Services Inc. Core Transaction 4'));
+define('OTP_SENDER_EMAIL', trim((string)(getenv('GSMS_OTP_SENDER_EMAIL') ?: (getenv('OTP_SENDER_EMAIL') ?: MAIL_FROM_EMAIL))));
 define('MAIL_FALLBACK_ENABLED', filter_var(getenv('GSMS_MAIL_FALLBACK') ?: 'true', FILTER_VALIDATE_BOOLEAN));
 define('OTP_EXPIRY_MINUTES', 10);
 define('OTP_MAX_ATTEMPTS',    5);

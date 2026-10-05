@@ -74,29 +74,48 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
             }
             $expires=date('Y-m-d H:i:s',time()+(OTP_EXPIRY_MINUTES*60));
 
-            // Persist the new OTP before attempting delivery. This removes the
-            // delivery/database race where a code could arrive but not exist in
-            // the verification table. If delivery fails, the user stays on the
-            // OTP screen and can safely resend the current code.
+            // Store the new OTP before attempting delivery so verification can
+            // never receive an email for a code that was not persisted. Keep a
+            // copy of the previous record so a failed resend can restore it.
+            $pdo=db();
+            $previous=null;
+            $previousStmt=$pdo->prepare('SELECT id,otp_hash,expires_at,attempts FROM otp_requests WHERE user_id=? ORDER BY id DESC LIMIT 1');
+            $previousStmt->execute([(int)$pending['id']]);
+            $previous=$previousStmt->fetch() ?: null;
+
             try {
-                $pdo=db();
                 $pdo->beginTransaction();
+                $pdo->prepare('DELETE FROM otp_requests WHERE user_id=?')->execute([(int)$pending['id']]);
+                $pdo->prepare('INSERT INTO otp_requests(user_id,otp_hash,expires_at,attempts) VALUES(?,?,?,0)')
+                    ->execute([(int)$pending['id'],$hash,$expires]);
+                $pdo->commit();
+
                 try {
-                    $pdo->prepare('DELETE FROM otp_requests WHERE user_id=?')->execute([(int)$pending['id']]);
-                    $pdo->prepare('INSERT INTO otp_requests(user_id,otp_hash,expires_at,attempts) VALUES(?,?,?,0)')
-                        ->execute([(int)$pending['id'],$hash,$expires]);
-                    $pdo->commit();
-                } catch(Throwable $dbError) {
-                    if ($pdo->inTransaction()) $pdo->rollBack();
-                    throw $dbError;
+                    send_otp_email($pending['email'],$pending['name'],$otp);
+                } catch(Throwable $mailError) {
+                    // Restore the previous working OTP when delivery fails.
+                    $pdo->beginTransaction();
+                    try {
+                        $pdo->prepare('DELETE FROM otp_requests WHERE user_id=?')->execute([(int)$pending['id']]);
+                        if ($previous) {
+                            $pdo->prepare('INSERT INTO otp_requests(id,user_id,otp_hash,expires_at,attempts) VALUES(?,?,?,?,?)')
+                                ->execute([(int)$previous['id'],(int)$pending['id'],$previous['otp_hash'],$previous['expires_at'],(int)$previous['attempts']]);
+                        }
+                        $pdo->commit();
+                    } catch(Throwable $restoreError) {
+                        if ($pdo->inTransaction()) $pdo->rollBack();
+                        throw $mailError;
+                    }
+                    throw $mailError;
                 }
+
+                // Start the cooldown only after a successful delivery and DB update.
+                $_SESSION['otp_last_resend']=time();
                 $_SESSION['pending_otp_created']=time();
                 $pending=$_SESSION['pending_otp_user'];
-                send_otp_email($pending['email'],$pending['name'],$otp);
-                $_SESSION['otp_last_resend']=time();
                 $success='A new 6-digit verification code has been sent to your email.';
             } catch(Throwable $mailError) {
-                $error='The new verification code is saved, but email delivery failed. Please use Resend OTP after checking the mail settings.';
+                $error='Unable to send verification code. Your previous code is still available. Check the Gmail SMTP/App Password settings and try again.';
             }
         } elseif ($action==='login') {
             $email=strtolower(trim((string)($_POST['email']??'')));
@@ -125,6 +144,10 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
                 $expires=date('Y-m-d H:i:s',time()+(OTP_EXPIRY_MINUTES*60));
 
                 try {
+                    // Persist the OTP BEFORE sending it. This fixes the race where
+                    // Gmail accepts the message but the verification record was
+                    // never committed, producing an apparently valid code that
+                    // the application cannot verify.
                     $pdo=db();
                     $pdo->beginTransaction();
                     try {
@@ -137,17 +160,18 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
                         throw $dbError;
                     }
 
+                    // Only after the OTP is durable do we send it. If delivery
+                    // fails, the user can safely use Resend without losing the
+                    // newly generated code due to a database race.
+                    send_otp_email($u['email'],$u['name'],$otp);
+
                     $_SESSION['pending_otp_user']=[
                         'id'=>(int)$u['id'],'name'=>$u['name'],
                         'email'=>$u['email'],'role'=>$u['role']
                     ];
                     $_SESSION['pending_otp_created']=time();
-                    $_SESSION['otp_last_resend']=0;
-                    $pending=$_SESSION['pending_otp_user'];
-
-                    // Send only after the hashed OTP is safely stored.
-                    send_otp_email($u['email'],$u['name'],$otp);
                     $_SESSION['otp_last_resend']=time();
+                    $pending=$_SESSION['pending_otp_user'];
                     $success='Verification code sent. Enter the 6-digit OTP below to continue to the dashboard.';
 
                     $history=db()->prepare('INSERT INTO login_history(user_id,email,status,ip_address,user_agent) VALUES(?,?,?,?,?)');
@@ -157,7 +181,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
                         substr($_SERVER['HTTP_USER_AGENT']??'',0,500)
                     ]);
                 } catch(Throwable $mailError) {
-                    $error='The verification code was generated and saved, but email delivery failed. Please use Resend OTP or check the Gmail SMTP/App Password settings.';
+                    $error='We could not send the verification code. Please verify the Gmail SMTP/App Password configuration and try again.';
                 }
             } else {
                 $error='Invalid email or password.';
