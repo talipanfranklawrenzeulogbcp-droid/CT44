@@ -14,7 +14,7 @@ function sync_legacy_feedback_threads(): void {
     // the conversation tables on demand so the admin inbox never loses them.
     try {
         $pdo=db();
-        $legacy=$pdo->query("SELECT id,user_id,sender_user_id,sender_name,sender_role,title,message,created_at,reply_to_id,feedback_thread_id FROM admin_notifications WHERE type='feedback' ORDER BY id ASC")->fetchAll();
+        $legacy=$pdo->query("SELECT id,user_id,sender_user_id,sender_name,sender_role,title,message,created_at,reply_to_id,feedback_thread_id FROM admin_notifications WHERE type IN ('feedback','feedback_reply') ORDER BY id ASC")->fetchAll();
         if(!$legacy)return;
         $findThread=$pdo->prepare("SELECT id,user_id FROM feedback_threads WHERE legacy_notification_id=? LIMIT 1");
         $insertThread=$pdo->prepare("INSERT INTO feedback_threads(user_id,subject,category,priority,status,legacy_notification_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)");
@@ -23,8 +23,13 @@ function sync_legacy_feedback_threads(): void {
         $findMessage=$pdo->prepare("SELECT id FROM feedback_messages WHERE thread_id=? AND message=? AND created_at=? AND COALESCE(sender_user_id,0)=COALESCE(?,0) LIMIT 1");
         foreach($legacy as $row){
             $notificationId=(int)$row['id'];
-            $baseId=0;
-            {
+            $baseId=(int)($row['reply_to_id']??0);
+            if(($row['type']??'')==='feedback_reply' && $baseId>0){
+                $findThread->execute([$baseId]);
+                $thread=$findThread->fetch();
+                if(!$thread)continue;
+                $threadId=(int)$thread['id'];
+            } else {
                 $findThread->execute([$notificationId]);
                 $thread=$findThread->fetch();
                 if(!$thread){
@@ -106,10 +111,9 @@ function feedback_threads_for_user(bool $admin=false): array {
         $q->execute($admin ? [] : [(int)$u['id'], (int)$u['id']]);
         $threads=$q->fetchAll();
         foreach($threads as &$t){
-            $mq=db()->prepare("SELECT id,thread_id,sender_user_id,sender_name,sender_role,message,created_at FROM feedback_messages WHERE thread_id=? ORDER BY id ASC LIMIT 1");
+            $mq=db()->prepare("SELECT id,thread_id,sender_user_id,sender_name,sender_role,message,created_at FROM feedback_messages WHERE thread_id=? ORDER BY id ASC");
             $mq->execute([(int)$t['id']]);
-             $t['messages']=$mq->fetchAll();
-             $t['message_count']=count($t['messages']);
+            $t['messages']=$mq->fetchAll();
         }
         unset($t);
     } catch(Throwable $primaryError) {
@@ -125,10 +129,14 @@ function feedback_threads_for_user(bool $admin=false): array {
         $pdo=db();
         $q=$pdo->query("SELECT id,user_id,type,title,message,sender_name,sender_role,sender_user_id,is_read,created_at,reply_to_id,feedback_thread_id
                         FROM admin_notifications
-                        WHERE type='feedback'
+                        WHERE type IN ('feedback','feedback_reply')
                         ORDER BY created_at DESC,id DESC LIMIT 200");
         $rows=$q->fetchAll();
         $base=[]; $replies=[];
+        try {
+            $rq=$pdo->query("SELECT id,user_id,type,title,message,sender_name,sender_role,is_read,created_at,reply_to_id FROM admin_notifications WHERE type='feedback_reply' ORDER BY id ASC");
+            $replies=$rq->fetchAll();
+        } catch(Throwable $ignore) { $replies=[]; }
         foreach($rows as $row){
             if(($row['type']??'')==='feedback') $base[(int)$row['id']]=$row;
         }
@@ -154,9 +162,19 @@ function feedback_threads_for_user(bool $admin=false): array {
                 'message'=>$row['message'] ?: '', 'created_at'=>$row['created_at']
             ]];
             $lastUpdated=$row['created_at'];
+            foreach($replies as $reply){
+                if((int)($reply['reply_to_id']??0)!==$legacyId)continue;
+                $messages[]=[
+                    'id'=>(int)$reply['id'],'thread_id'=>-$legacyId,'sender_user_id'=>null,
+                    'sender_name'=>$reply['sender_name'] ?: 'Administrator',
+                    'sender_role'=>$reply['sender_role'] ?: 'Administrator',
+                    'message'=>$reply['message'] ?: '', 'created_at'=>$reply['created_at']
+                ];
+                $lastUpdated=$reply['created_at'];
+            }
             $threads[]=[
                 'id'=>-$legacyId,
-                'user_id'=>(int)($row['sender_user_id']??$row['user_id']??0),
+                'user_id'=>(int)($row['user_id']??0),
                 'subject'=>trim((string)($row['title']??'')) ?: 'General Feedback',
                 'category'=>'General Feedback','priority'=>'Medium',
                 'status'=>count($messages)>1?'Replied':'New',
@@ -172,6 +190,31 @@ function feedback_threads_for_user(bool $admin=false): array {
                 'legacy_only'=>true,
                 'legacy_notification_id'=>$legacyId
             ];
+        }
+        if(!$admin){
+            foreach($replies as $reply){
+                $rid=(int)($reply['id']??0);
+                $replyOwner=(int)($reply['user_id']??0);
+                if($replyOwner!==(int)$u['id']) continue;
+                $threadId=(int)($reply['feedback_thread_id']??0);
+                if($threadId>0) continue;
+                $baseId=(int)($reply['reply_to_id']??0);
+                if($baseId<=0) continue;
+                $baseRow=$base[$baseId]??null;
+                if(!$baseRow) continue;
+                $legacyId=$baseId;
+                $exists=false; foreach($threads as $existing){ if((int)($existing['legacy_notification_id']??0)===$legacyId){$exists=true;break;} }
+                if($exists) continue;
+                $threads[]=[
+                    'id'=>-$legacyId,'user_id'=>(int)$u['id'],'subject'=>trim((string)($baseRow['title']??''))?:'General Feedback',
+                    'category'=>'General Feedback','priority'=>'Medium','status'=>'Replied','created_at'=>$baseRow['created_at'],'updated_at'=>$reply['created_at'],
+                    'resolved_at'=>null,'owner_name'=>$baseRow['sender_name']?:($u['name']??'Employee'),'message_count'=>2,
+                    'last_message'=>$reply['message'],'last_sender_name'=>$reply['sender_name']?:'Administrator','last_sender_role'=>$reply['sender_role']?:'Administrator',
+                    'owner_message_user_id'=>(int)($baseRow['sender_user_id']??0)?:null,
+                    'messages'=>[['id'=>0,'thread_id'=>-$legacyId,'sender_user_id'=>(int)($baseRow['sender_user_id']??0)?:null,'sender_name'=>$baseRow['sender_name']?:'Employee','sender_role'=>$baseRow['sender_role']?:'Staff','message'=>$baseRow['message']?:'','created_at'=>$baseRow['created_at']],['id'=>$rid,'thread_id'=>-$legacyId,'sender_user_id'=>(int)($reply['sender_user_id']??0)?:null,'sender_name'=>$reply['sender_name']?:'Administrator','sender_role'=>$reply['sender_role']?:'Administrator','message'=>$reply['message']?:'','created_at'=>$reply['created_at']]],
+                    'legacy_only'=>true,'legacy_notification_id'=>$legacyId
+                ];
+            }
         }
         usort($threads,static function($a,$b){
             $ta=strtotime((string)($a['updated_at']??''));
@@ -199,7 +242,7 @@ function unread_notification_count(): int {
     try{
         $u=current_user(); if(!$u)return 0;
         if(($u['role']??'')==='Administrator'){
-            $q=db()->prepare("SELECT COUNT(*) FROM admin_notifications WHERE is_read=0 AND (user_id=? OR user_id IS NULL) AND type IN ('data_transfer')");
+            $q=db()->prepare("SELECT COUNT(*) FROM admin_notifications WHERE is_read=0 AND (user_id=? OR user_id IS NULL) AND type IN ('feedback','data_transfer')");
         }else{
             $q=db()->prepare("SELECT COUNT(*) FROM admin_notifications WHERE is_read=0 AND (user_id=? OR user_id IS NULL) AND type IN ('data_transfer')");
         }
@@ -218,7 +261,7 @@ function staff_transfer_notifications(): array {
 }
 function page_header(string $title,string $section=''): void {
 $u=current_user();
-$adminNotifications = [];
+$adminNotifications = (($u['role'] ?? '') === 'Administrator') ? admin_feedback_notifications() : [];
 $staffNotifications = (($u['role'] ?? '') === 'Staff') ? staff_transfer_notifications() : [];
 ?>
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title><?=e($title)?> — Great Solomon Manpower Services Inc.</title><link rel="stylesheet" href="<?=e(url('/style.css'))?>"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Public+Sans:wght@400;500;600;700&family=Material+Symbols+Outlined:FILL@0..1&display=swap" rel="stylesheet"></head><body><div id="sidebar-backdrop"></div><aside id="sidebar" class="gw-sidebar"><div class="gw-brand"><div class="brand-logo-white sidebar-logo-wrap"><img src="<?=e(url('/assets/logo2.svg'))?>" alt="Great Solomon Manpower Services Inc. logo" class="brand-logo-image"></div><div class="gw-brand-copy"><div class="gw-brand-title">Great Solomon Manpower Services Inc.</div><div class="gw-brand-subtitle">Governance &amp; Safety</div></div></div><div class="gw-sidebar-section">CORE TRANSACTION 4</div><div style="margin:0 20px 12px;height:1px;background:rgba(255,255,255,.12)"></div><nav class="gw-nav"><a class="module-link" href="<?=e(url('/dashboard.php'))?>"><button class="<?= $section==='dashboard'?'active':'' ?>"><span class="material-symbols-outlined">dashboard</span><span>Reports, Analysis &amp; Dashboard</span></button></a><a class="module-link" href="<?=e(url('/ai_assistant.php'))?>"><button class="<?= $section==='ai'?'active':'' ?>"><span class="material-symbols-outlined">auto_awesome</span><span>AI System Assistant</span><span class="nav-number">AI</span></button></a><a class="module-link" href="<?=e(url('/modules/health_safety/index.php'))?>"><button class="<?= $section==='health'?'active':'' ?>"><span class="material-symbols-outlined">health_and_safety</span><span>Health, Safety &amp; Welfare</span><span class="nav-number">1</span></button></a><a class="module-link" href="<?=e(url('/modules/legal_compliance/index.php'))?>"><button class="<?= $section==='legal'?'active':'' ?>"><span class="material-symbols-outlined">gavel</span><span>Legal &amp; Compliance</span><span class="nav-number">2</span></button></a><?php if (($u['role'] ?? '') === 'Administrator'): ?><a class="module-link" href="<?=e(url('/modules/system_admin_security/index.php'))?>"><button class="<?= $section==='security'?'active':'' ?>"><span class="material-symbols-outlined">admin_panel_settings</span><span>System Administration &amp; Security</span><span class="nav-number">3</span></button></a><?php endif; ?><a class="module-link" href="<?=e(url('/modules/asset_equipment/index.php'))?>"><button class="<?= $section==='assets'?'active':'' ?>"><span class="material-symbols-outlined">inventory_2</span><span>Asset &amp; Equipment Issuance</span><span class="nav-number">4</span></button></a></nav><div class="gw-sidebar-footer"><div class="gw-status-dot"></div><div><strong>Welcome back, <?=e($u['name']??'User')?></strong><span><?=e($u['role']??'Staff')?></span></div></div></aside><div class="gw-shell"><header class="gw-topbar"><div class="gw-topbar-left"><button id="sidebarToggle" class="icon-btn" title="Toggle sidebar"><span class="material-symbols-outlined">menu_open</span></button><div class="gw-topbar-title"><span class="eyebrow">SERVICE MANAGEMENT &amp; ENTERPRISE RESOURCE SYSTEM</span><strong><?=e($title)?></strong></div></div><div class="gw-user user-menu-wrap">
@@ -233,7 +276,7 @@ $staffNotifications = (($u['role'] ?? '') === 'Staff') ? staff_transfer_notifica
 </button>
 <div id="userMenu" class="user-dropdown">
 <button type="button" onclick="showDataStorageModal()"><span class="material-symbols-outlined">folder_data</span>Data Storage</button><button type="button" onclick="showArchiveModal()"><span class="material-symbols-outlined">archive</span>Archive</button>
-<?php if (in_array(($u['role'] ?? ''), ['Staff','Administrator'], true)): ?><button type="button" onclick="showNotificationModal()"><span class="material-symbols-outlined">feedback</span><?= (($u['role'] ?? '') === 'Administrator' ? 'Employee Feedback' : 'Feedback') ?></button><?php endif; ?>
+<?php if (($u['role'] ?? '') === 'Administrator'): ?><button type="button" onclick="showAdminFeedbackModal()"><span class="material-symbols-outlined">feedback</span>Employee Feedback</button><?php elseif (($u['role'] ?? '') === 'Staff'): ?><button type="button" onclick="showFeedbackModal()"><span class="material-symbols-outlined">feedback</span>Feedback</button><?php endif; ?>
 <button type="button" onclick="showTermsModal()"><span class="material-symbols-outlined">gavel</span>Terms and Conditions</button>
 <button type="button" onclick="showLogoutModal()"><span class="material-symbols-outlined">logout</span>Logout</button>
 </div>
@@ -242,12 +285,12 @@ $staffNotifications = (($u['role'] ?? '') === 'Staff') ? staff_transfer_notifica
 function page_footer(): void {
 $u=current_user() ?: []; $feedbackSent=!empty($_SESSION['feedback_sent']); unset($_SESSION['feedback_sent']); $path=(string)($_SERVER['SCRIPT_NAME']??''); $showModuleTop=str_contains($path,'/modules/health_safety/') || str_contains($path,'/modules/legal_compliance/') || str_contains($path,'/modules/system_admin_security/') || str_contains($path,'/modules/asset_equipment/');
 $jsFlags=JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_SLASHES;
-$feedbackThreads=(($u['role']??'') === 'Staff') ? feedback_threads_for_user(false) : [];
+$feedbackThreads=(($u['role']??'') === 'Administrator') ? feedback_threads_for_user(true) : ((($u['role']??'') === 'Staff') ? feedback_threads_for_user(false) : []);
 echo '</div></main></div>'.($showModuleTop ? '<button id="moduleTopButton" class="module-top-button" type="button" aria-label="Go to top" title="Go to top"><span class="material-symbols-outlined">arrow_upward</span></button>' : '').'<div id="modalRoot"></div><script>';
 echo 'window.APP_BASE='.json_encode(base_url(),$jsFlags).';';
 echo 'window.CSRF_TOKEN='.json_encode(csrf_token(),$jsFlags).';';
 echo 'window.CURRENT_USER='.json_encode(["id"=>(int)($u["id"]??0),"name"=>(string)($u["name"]??"User"),"role"=>(string)($u["role"]??"Staff")],$jsFlags).';';
-echo 'window.ADMIN_NOTIFICATIONS='.json_encode([],$jsFlags).';';
+echo 'window.ADMIN_NOTIFICATIONS='.json_encode((($u["role"]??"") === "Administrator") ? admin_feedback_notifications() : [],$jsFlags).';';
 echo 'window.STAFF_NOTIFICATIONS='.json_encode((($u["role"]??"") === "Staff") ? staff_transfer_notifications() : [],$jsFlags).';';
 echo 'window.FEEDBACK_THREADS='.json_encode($feedbackThreads,$jsFlags).';';
 echo 'window.FEEDBACK_SENT='.json_encode($feedbackSent,$jsFlags).';';

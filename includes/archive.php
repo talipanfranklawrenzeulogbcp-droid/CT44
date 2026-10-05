@@ -1,117 +1,112 @@
 <?php
+declare(strict_types=1);
 require_once __DIR__.'/helpers.php';
+require_once __DIR__.'/service_client.php';
 require_login();
+
 $action=(string)($_POST['action'] ?? $_GET['action'] ?? 'list');
-$u=current_user(); $isAdmin=(($u['role']??'')==='Administrator');
-if ($_SERVER['REQUEST_METHOD']==='POST') verify_csrf();
+if($_SERVER['REQUEST_METHOD']==='POST') verify_csrf();
+$u=current_user();
 
 if($action==='list'){
     header('Content-Type: application/json; charset=utf-8');
     $type=trim((string)($_GET['type']??''));
-    $allowed=['feedback','file','record','']; if(!in_array($type,$allowed,true))$type='';
-    $sql="SELECT id,item_type,item_name,source_table,source_id,deleted_at FROM archive_items".($type!==''?" WHERE item_type=?":'')." ORDER BY deleted_at DESC LIMIT 500";
-    $q=$type!==''?db()->prepare($sql):db()->query($sql); if($type!=='')$q->execute([$type]); $rows=$q->fetchAll(PDO::FETCH_ASSOC);
-    echo json_encode(['ok'=>true,'items'=>$rows],JSON_UNESCAPED_UNICODE);
+    $sql="SELECT id,item_type,item_name,source_table,source_id,deleted_by,deleted_at FROM archive_items";
+    $params=[];
+    if($type!==''){ $sql.=" WHERE item_type=?"; $params[]=$type; }
+    $sql.=" ORDER BY deleted_at DESC LIMIT 500";
+    $st=db()->prepare($sql); $st->execute($params);
+    echo json_encode(['ok'=>true,'items'=>$st->fetchAll(PDO::FETCH_ASSOC)],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
     exit;
 }
 
 if($action==='backup'){
-    if(!$isAdmin){ http_response_code(403); exit('Administrator access required.'); }
-    $type=trim((string)($_GET['type']??'all')); $allowed=['feedback','file','record','all']; if(!in_array($type,$allowed,true))$type='all';
-    $sql="SELECT * FROM archive_items".($type!=='all'?" WHERE item_type=?":'')." ORDER BY deleted_at DESC,id DESC";
-    $q=$type!=='all'?db()->prepare($sql):db()->query($sql); if($type!=='all')$q->execute([$type]);
-    $items=$q->fetchAll(PDO::FETCH_ASSOC);
-    $backup=['format'=>'CT4 Archive Backup','version'=>1,'created_at'=>date('c'),'category'=>$type,'items'=>$items];
-    header('Content-Type: application/json; charset=utf-8'); header('Content-Disposition: attachment; filename="ct4-archive-backup-'.date('Ymd-His').'.json"');
-    echo json_encode($backup,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES); exit;
+    require_admin();
+    $type=trim((string)($_GET['type']??''));
+    $sql="SELECT * FROM archive_items"; $params=[];
+    if($type!==''){ $sql.=" WHERE item_type=?"; $params[]=$type; }
+    $sql.=" ORDER BY deleted_at ASC,id ASC";
+    $st=db()->prepare($sql); $st->execute($params);
+    $rows=$st->fetchAll(PDO::FETCH_ASSOC);
+    $backup=[
+        'format'=>'CT4 Archive Backup',
+        'version'=>1,
+        'category'=>$type!==''?$type:'all',
+        'created_at'=>date('c'),
+        'item_count'=>count($rows),
+        'items'=>$rows
+    ];
+    $json=json_encode($backup,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+    if($json===false) throw new RuntimeException('Unable to create archive backup.');
+    audit('Archive','Backup',$type!==''?'Feedback archive backup':'Full archive backup');
+    header('Content-Type: application/json; charset=utf-8');
+    header('Content-Disposition: attachment; filename="ct4-archive-backup-'.date('Ymd-His').($type!==''?'-'.preg_replace('/[^a-z0-9_-]+/i','-',strtolower($type)):'').'.json"');
+    header('Content-Length: '.strlen($json));
+    echo $json; exit;
 }
 
 if($_SERVER['REQUEST_METHOD']==='POST' && $action==='recover'){
+    require_admin();
     $id=(int)($_POST['id']??0);
     $st=db()->prepare('SELECT * FROM archive_items WHERE id=?');
-    $st->execute([$id]);
-    $a=$st->fetch(PDO::FETCH_ASSOC);
-    if(!$a){
-        http_response_code(404);
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode(['ok'=>false,'error'=>'Archived item not found.']);
-        exit;
-    }
+    $st->execute([$id]); $a=$st->fetch(PDO::FETCH_ASSOC);
+    if(!$a){http_response_code(404);header('Content-Type: application/json');echo json_encode(['ok'=>false,'error'=>'Archived item not found.']);exit;}
     try{
         if($a['item_type']==='feedback'){
-            $p=json_decode((string)$a['payload'],true)?:[]; $thread=$p['thread']??null; $messages=$p['messages']??[]; $notifications=$p['notifications']??[];
-            if(!$thread) throw new RuntimeException('Feedback archive payload is invalid.');
+            $payload=json_decode((string)$a['payload'],true);
+            if(!is_array($payload)||!is_array($payload['thread']??null)) throw new RuntimeException('Archived feedback data is invalid.');
             $pdo=db(); $pdo->beginTransaction();
-            unset($thread['id']); $thread['legacy_notification_id']=null;
-            $cols=array_keys($thread); $marks=implode(',',array_fill(0,count($cols),'?')); $pdo->prepare('INSERT INTO feedback_threads (`'.implode('`,`',$cols).'`) VALUES ('.$marks.')')->execute(array_values($thread));
-            $newId=(int)$pdo->lastInsertId(); $restoredNotificationId=null;
-            foreach($messages as $m){unset($m['id']);$m['thread_id']=$newId;$cols=array_keys($m);$marks=implode(',',array_fill(0,count($cols),'?'));$pdo->prepare('INSERT INTO feedback_messages (`'.implode('`,`',$cols).'`) VALUES ('.$marks.')')->execute(array_values($m));}
-            foreach($notifications as $n){unset($n['id']);$n['feedback_thread_id']=$newId;$cols=array_keys($n);$marks=implode(',',array_fill(0,count($cols),'?'));try{$pdo->prepare('INSERT INTO admin_notifications (`'.implode('`,`',$cols).'`) VALUES ('.$marks.')')->execute(array_values($n));$restoredNotificationId=(int)$pdo->lastInsertId();}catch(Throwable $ignore){}}
-            if($restoredNotificationId){$pdo->prepare('UPDATE feedback_threads SET legacy_notification_id=? WHERE id=?')->execute([$restoredNotificationId,$newId]);}
+            $t=$payload['thread']; $cols=['user_id','subject','category','priority','status','created_at','updated_at','resolved_at','resolved_by'];
+            $vals=[];
+            foreach($cols as $c)$vals[]=$t[$c]??null;
+            $ins=$pdo->prepare("INSERT INTO feedback_threads (`".implode('`,`',$cols)."`) VALUES (".implode(',',array_fill(0,count($cols),'?')).")");
+            $ins->execute($vals); $newTid=(int)$pdo->lastInsertId();
+            $msgIns=$pdo->prepare("INSERT INTO feedback_messages(thread_id,sender_user_id,sender_name,sender_role,message,created_at) VALUES(?,?,?,?,?,?)");
+            foreach(($payload['messages']??[]) as $m){
+                $msgIns->execute([$newTid,$m['sender_user_id']??null,$m['sender_name']??null,$m['sender_role']??null,$m['message']??'',$m['created_at']??date('Y-m-d H:i:s')]);
+            }
+            $notIns=$pdo->prepare("INSERT INTO admin_notifications(user_id,type,title,message,sender_name,sender_role,sender_user_id,is_read,created_at,feedback_thread_id)
+                                   VALUES(?,?,?,?,?,?,?,?,?,?)");
+            foreach(($payload['notifications']??[]) as $n){
+                if(($n['type']??'')==='feedback_reply') continue; // replies are historical only and reply sending is disabled
+                $notIns->execute([$n['user_id']??null,$n['type']??'feedback',$n['title']??'Employee Feedback',$n['message']??'',$n['sender_name']??null,$n['sender_role']??null,$n['sender_user_id']??null,$n['is_read']??1,$n['created_at']??date('Y-m-d H:i:s'),$newTid]);
+            }
             $pdo->commit();
         } elseif($a['item_type']==='file'){
             $p=json_decode((string)$a['payload'],true)?:[];
-            $userId=(int)(current_user()['id'] ?? $a['deleted_by'] ?? 0);
+            $userId=(int)(current_user()['id']??$a['deleted_by']??0);
             if(($a['source_table']??'')==='employee_documents'){
-                $p['file_data']=(string)($a['file_data'] ?? '');
-                $p['file_type']=(string)($a['file_type'] ?: ($p['file_type'] ?? 'application/octet-stream'));
-                $p['file_size']=(int)strlen($p['file_data']);
-                $p['uploaded_by']=$userId ?: ($p['uploaded_by'] ?? null);
+                $p['file_data']=(string)($a['file_data']??'');
+                $p['file_type']=(string)($a['file_type']?:($p['file_type']??'application/octet-stream'));
+                $p['file_size']=strlen($p['file_data']); $p['uploaded_by']=$userId?:($p['uploaded_by']??null);
                 $cols=array_keys($p);$marks=implode(',',array_fill(0,count($cols),'?'));
                 db()->prepare('INSERT INTO employee_documents (`'.implode('`,`',$cols).'`) VALUES ('.$marks.')')->execute(array_values($p));
-            } else {
-                $svc=service('storage');
-                $svc->save((string)$a['item_name'],(string)($a['file_type'] ?: 'application/octet-stream'),(string)($p['source_branch'] ?? 'Archived Recovery'),$userId,(string)($a['file_data'] ?? ''));
+            }else{
+                service('storage')->save((string)$a['item_name'],(string)($a['file_type']?:'application/octet-stream'),(string)($p['source_branch']??'Archived Recovery'),$userId,(string)($a['file_data']??''));
             }
-        } else {
-            $allowed=[
-                'safety_incidents',
-                'compliance_obligations',
-                'compliance_audits',
-                'health_records',
-                'assets',
-                'asset_issuances',
-                'issuance_records',
-                'maintenance_records',
-                'security_events'
-            ];
-            $table = (string)$a['source_table'];
-            if($table === 'issuance_records') $table = 'asset_issuances';
-            if(!in_array($table,$allowed,true)) throw new RuntimeException('This record type cannot be recovered automatically.');
-            $row=json_decode((string)$a['payload'],true);
-            if(!is_array($row)) throw new RuntimeException('Archived record data is invalid.');
-            unset($row['id']);
-            $cols=array_keys($row);
-            $marks=implode(',',array_fill(0,count($cols),'?'));
-            $sql='INSERT INTO `'.$table.'` (`'.implode('`,`',$cols).'`) VALUES ('.$marks.')';
-            db()->prepare($sql)->execute(array_values($row));
+        }else{
+            $allowed=['safety_incidents','compliance_obligations','compliance_audits','health_records','assets','asset_issuances','issuance_records','maintenance_records','security_events'];
+            $table=(string)$a['source_table']; if($table==='issuance_records')$table='asset_issuances';
+            if(!in_array($table,$allowed,true))throw new RuntimeException('This record type cannot be recovered automatically.');
+            $row=json_decode((string)$a['payload'],true); if(!is_array($row))throw new RuntimeException('Archived record data is invalid.');
+            unset($row['id']); $cols=array_keys($row);$marks=implode(',',array_fill(0,count($cols),'?'));
+            db()->prepare('INSERT INTO `'.$table.'` (`'.implode('`,`',$cols).'`) VALUES ('.$marks.')')->execute(array_values($row));
         }
         db()->prepare('DELETE FROM archive_items WHERE id=?')->execute([$id]);
         audit('Archive','Recover',(string)$a['item_name']);
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode(['ok'=>true]);
-        exit;
+        header('Content-Type: application/json'); echo json_encode(['ok'=>true]); exit;
     }catch(Throwable $e){
-        http_response_code(500);
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode(['ok'=>false,'error'=>$e->getMessage()]);
-        exit;
+        if(isset($pdo)&&$pdo->inTransaction())$pdo->rollBack();
+        http_response_code(500);header('Content-Type: application/json');echo json_encode(['ok'=>false,'error'=>$e->getMessage()]);exit;
     }
 }
 
 if($_SERVER['REQUEST_METHOD']==='POST' && ($action==='delete' || $action==='purge')){
     require_admin();
     $id=(int)($_POST['id']??0);
-    $st=db()->prepare('SELECT item_name FROM archive_items WHERE id=?');
-    $st->execute([$id]);
-    $name=$st->fetchColumn() ?: ('Item #'.$id);
+    $st=db()->prepare('SELECT item_name FROM archive_items WHERE id=?');$st->execute([$id]);$name=$st->fetchColumn()?:('Item #'.$id);
     db()->prepare('DELETE FROM archive_items WHERE id=?')->execute([$id]);
     audit('Archive','Permanent Delete',(string)$name);
-    header('Content-Type: application/json; charset=utf-8');
-    echo json_encode(['ok'=>true]);
-    exit;
+    header('Content-Type: application/json');echo json_encode(['ok'=>true]);exit;
 }
-
-http_response_code(400);
-header('Content-Type: application/json; charset=utf-8');
-echo json_encode(['ok'=>false,'error'=>'Invalid request.']);
+http_response_code(400);header('Content-Type: application/json');echo json_encode(['ok'=>false,'error'=>'Invalid request.']);

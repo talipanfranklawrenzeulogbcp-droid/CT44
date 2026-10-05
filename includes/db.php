@@ -38,26 +38,6 @@ function db(): PDO {
     // Lightweight schema migrations — keep existing installations compatible.
     // All wrapped in try/catch so first-boot or managed-DB permission gaps
     // do not crash the application (HostForge migration privilege safety rule).
-    // OTP migration: older deployments may not have the OTP table even when
-    // the application files have been updated. Create it before any login
-    // request touches the table so OTP verification never fails with a
-    // missing-table error.
-    try {
-        $pdo->exec("CREATE TABLE IF NOT EXISTS otp_requests (
-            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            user_id INT UNSIGNED NOT NULL,
-            otp_hash VARCHAR(255) NOT NULL,
-            expires_at DATETIME NOT NULL,
-            attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            INDEX idx_otp_user (user_id), INDEX idx_otp_expires (expires_at), INDEX idx_otp_created (created_at),
-            CONSTRAINT fk_otp_user_runtime FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB");
-    } catch (Throwable $e) {
-        // The base schema may still be provisioning; the login request will
-        // receive the normal controlled database error rather than a blank 500.
-    }
-
     // Notification compatibility migration. Older installations may have the
     // admin_notifications table without sender_user_id, which is required to
     // route administrator feedback replies to the exact staff account.

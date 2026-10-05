@@ -74,10 +74,10 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
             }
             $expires=date('Y-m-d H:i:s',time()+(OTP_EXPIRY_MINUTES*60));
 
-            // Persist the OTP BEFORE sending it. The previous implementation
-            // sent the mail first and only then wrote the hash to MySQL, which
-            // created a race: a successful email could arrive while the OTP was
-            // missing from the database, making a correct code fail verification.
+            // Persist the new OTP before attempting delivery. This removes the
+            // delivery/database race where a code could arrive but not exist in
+            // the verification table. If delivery fails, the user stays on the
+            // OTP screen and can safely resend the current code.
             try {
                 $pdo=db();
                 $pdo->beginTransaction();
@@ -90,17 +90,13 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
                     if ($pdo->inTransaction()) $pdo->rollBack();
                     throw $dbError;
                 }
-
-                // Keep the pending session usable even when SMTP is temporarily
-                // unavailable. The user can retry with the same page/resend flow.
                 $_SESSION['pending_otp_created']=time();
                 $pending=$_SESSION['pending_otp_user'];
                 send_otp_email($pending['email'],$pending['name'],$otp);
                 $_SESSION['otp_last_resend']=time();
                 $success='A new 6-digit verification code has been sent to your email.';
             } catch(Throwable $mailError) {
-                error_log('[CT4 OTP resend] '.$mailError->getMessage());
-                $error='The new verification code could not be emailed. Please check your email settings or try Resend again.';
+                $error='The new verification code is saved, but email delivery failed. Please use Resend OTP after checking the mail settings.';
             }
         } elseif ($action==='login') {
             $email=strtolower(trim((string)($_POST['email']??'')));
@@ -129,9 +125,6 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
                 $expires=date('Y-m-d H:i:s',time()+(OTP_EXPIRY_MINUTES*60));
 
                 try {
-                    // Persist the hash BEFORE delivery. This removes the email/DB
-                    // race that previously allowed a valid emailed OTP to be
-                    // rejected because its database row had not been created.
                     $pdo=db();
                     $pdo->beginTransaction();
                     try {
@@ -143,16 +136,17 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
                         if($pdo->inTransaction()) $pdo->rollBack();
                         throw $dbError;
                     }
+
                     $_SESSION['pending_otp_user']=[
                         'id'=>(int)$u['id'],'name'=>$u['name'],
                         'email'=>$u['email'],'role'=>$u['role']
                     ];
                     $_SESSION['pending_otp_created']=time();
+                    $_SESSION['otp_last_resend']=0;
                     $pending=$_SESSION['pending_otp_user'];
-                    // Send only after the OTP is safely stored. If mail fails,
-                    // the pending session remains on the OTP page so Resend can
-                    // be used without forcing the user to re-enter the password.
-                    send_otp_email($pending['email'],$pending['name'],$otp);
+
+                    // Send only after the hashed OTP is safely stored.
+                    send_otp_email($u['email'],$u['name'],$otp);
                     $_SESSION['otp_last_resend']=time();
                     $success='Verification code sent. Enter the 6-digit OTP below to continue to the dashboard.';
 
@@ -163,8 +157,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
                         substr($_SERVER['HTTP_USER_AGENT']??'',0,500)
                     ]);
                 } catch(Throwable $mailError) {
-                    error_log('[CT4 OTP login] '.$mailError->getMessage());
-                    $error='We could not email the verification code. Please check the Gmail SMTP/App Password configuration or use Resend after retrying.';
+                    $error='The verification code was generated and saved, but email delivery failed. Please use Resend OTP or check the Gmail SMTP/App Password settings.';
                 }
             } else {
                 $error='Invalid email or password.';

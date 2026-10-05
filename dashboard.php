@@ -43,7 +43,6 @@ page_header('Reports, Analysis & Dashboard','dashboard'); show_flash(); ?>
 </form>
 </section>
 
-
 <section class="gw-stats">
 <div class="gw-stat"><div class="gw-stat-top"><span class="gw-stat-label">Safety Incidents</span><div class="gw-stat-icon"><span class="material-symbols-outlined">health_and_safety</span></div></div><div class="gw-stat-value"><?=e($counts['incidents'])?></div><div class="gw-stat-meta warning"><?=e($counts['open_incidents'])?> open / under investigation</div></div>
 <div class="gw-stat"><div class="gw-stat-top"><span class="gw-stat-label">Compliance</span><div class="gw-stat-icon"><span class="material-symbols-outlined">gavel</span></div></div><div class="gw-stat-value"><?=e($counts['obligations'])?></div><div class="gw-stat-meta warning"><?=e($counts['overdue'])?> overdue / attention</div></div>

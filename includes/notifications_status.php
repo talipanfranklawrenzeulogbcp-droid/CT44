@@ -11,10 +11,10 @@ if (!current_user()) {
 try {
     $u=current_user();
     if (($u['role'] ?? '') === 'Administrator') {
-        $q=db()->prepare("SELECT COUNT(*) FROM admin_notifications WHERE is_read=0 AND (user_id=? OR user_id IS NULL) AND type IN ('data_transfer')");
+        $q=db()->prepare("SELECT COUNT(*) FROM admin_notifications WHERE is_read=0 AND (user_id=? OR user_id IS NULL) AND type IN ('feedback','data_transfer')");
         $q->execute([(int)$u['id']]);
         $stmt=$q;
-        $q2=db()->prepare("SELECT id, title, message, created_at FROM admin_notifications WHERE (user_id=? OR user_id IS NULL) AND type IN ('data_transfer') ORDER BY id DESC LIMIT 1");
+        $q2=db()->prepare("SELECT id, title, message, created_at FROM admin_notifications WHERE (user_id=? OR user_id IS NULL) AND type IN ('feedback','data_transfer') ORDER BY id DESC LIMIT 1");
         $q2->execute([(int)$u['id']]);
         $latest=$q2->fetch();
     } else {
