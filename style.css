@@ -3671,3 +3671,21 @@ input:not([type="checkbox"]):not([type="radio"]):focus,select:focus,textarea:foc
 .feedback-table-empty,.feedback-table-loading{text-align:center!important;padding:28px 15px!important;color:#64748b!important}
 .feedback-table-empty strong{display:block;color:#334155;margin-bottom:3px}
 @media(max-width:760px){.feedback-table-head{align-items:flex-start;gap:10px;flex-direction:column}.feedback-table-actions{min-width:145px}}
+
+/* CT4 table/update usability enhancements */
+.table-wrap,.feedback-table-wrap{overflow-x:auto;max-width:100%;}
+.data-table,.feedback-data-table{min-width:max-content;table-layout:auto;}
+.data-table th,.feedback-data-table th{position:relative;white-space:nowrap;}
+.table-column-resizer{position:absolute;right:-3px;top:0;width:7px;height:100%;cursor:col-resize;user-select:none;z-index:3;}
+.table-column-resizer:hover{background:rgba(109,40,217,.18);}
+.update-form-modal{width:min(760px,calc(100vw - 28px));max-height:88vh;overflow:hidden;}
+.update-form-modal .gw-modal-body{max-height:calc(88vh - 86px);overflow:auto;}
+.update-form-modal .centered-update-form{display:grid;gap:10px;min-width:0;padding:4px;}
+.update-form-modal .centered-update-form label{font-weight:700;margin-top:4px;}
+.update-form-modal .centered-update-form input,
+.update-form-modal .centered-update-form select,
+.update-form-modal .centered-update-form textarea{width:100%;box-sizing:border-box;}
+.archive-toolbar{display:flex;gap:10px;justify-content:space-between;align-items:center;flex-wrap:wrap;margin-bottom:14px;}
+.archive-toolbar select{min-width:210px;padding:10px 12px;border:1px solid #dbe2ea;border-radius:10px;background:#fff;}
+.archive-backup-actions{display:flex;gap:8px;flex-wrap:wrap;}
+.admin-feedback-readonly-note{display:flex;align-items:center;gap:8px;padding:12px 14px;margin-top:12px;border-radius:10px;background:#f8fafc;color:#475569;font-size:13px;}

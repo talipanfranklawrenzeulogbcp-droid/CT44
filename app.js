@@ -136,18 +136,9 @@ function feedbackThreadCard(thread,isAdmin){
  const last=msgs.length?msgs[msgs.length-1]:null;
  const owner=thread.owner_name||'Staff';
  const actions=isAdmin
-  ? `<button type="button" class="gw-btn secondary" onclick="showFeedbackReply(${Number(thread.id)})"><span class="material-symbols-outlined">reply</span>Reply</button>
-     <button type="button" class="gw-btn secondary" onclick="updateFeedbackStatus(${Number(thread.id)},'In Review')">In Review</button>
-     ${thread.status==='Resolved'?'<button type="button" class="gw-btn secondary" disabled>Resolved</button>':'<button type="button" class="gw-btn secondary" onclick="updateFeedbackStatus('+Number(thread.id)+',\'Resolved\')">Resolve</button>'}
-     <button type="button" class="gw-btn secondary" onclick="archiveFeedback(${Number(thread.id)})"><span class="material-symbols-outlined">archive</span>Archive</button>
-     <button type="button" class="gw-btn btn-danger" onclick="deleteFeedbackThread(${Number(thread.id)})"><span class="material-symbols-outlined">delete</span>Delete</button>`
-  : `<button type="button" class="gw-btn primary" onclick="showFeedbackThread(${Number(thread.id)})"><span class="material-symbols-outlined">forum</span>Open Conversation</button>`;
- return `<div class="notification-card feedback-thread-card" data-feedback-thread="${Number(thread.id)}">
-   <div class="notification-card-head"><div><strong>${escapeHtml(thread.subject||'Feedback')}</strong><span>${escapeHtml(owner)} · ${escapeHtml(thread.category||'General Feedback')}</span></div><small>${renderDate(thread.updated_at||thread.created_at)}</small></div>
-   <div class="feedback-thread-meta">${feedbackStatusBadge(thread.status)} ${feedbackPriorityBadge(thread.priority)} <span>${Number(thread.message_count||msgs.length||0)} message${Number(thread.message_count||msgs.length||0)===1?'':'s'}</span></div>
-   <p>${escapeHtml((last?.message||thread.last_message||'').slice(0,300))}${(last?.message||thread.last_message||'').length>300?'…':''}</p>
-   <div class="notification-actions">${actions}</div>
- </div>`;
+  ? `<button type="button" class="gw-btn primary" onclick="showFeedbackThread(${Number(thread.id)})"><span class="material-symbols-outlined">forum</span>View</button><button type="button" class="gw-btn btn-danger" onclick="deleteFeedbackThread(${Number(thread.id)})"><span class="material-symbols-outlined">delete</span>Delete</button>`
+  : `<button type="button" class="gw-btn primary" onclick="showFeedbackThread(${Number(thread.id)})"><span class="material-symbols-outlined">forum</span>View</button><button type="button" class="gw-btn btn-danger" onclick="deleteStaffFeedback(${Number(thread.id)})"><span class="material-symbols-outlined">undo</span>Unsend</button>`;
+ return `<div class="notification-card feedback-thread-card" data-feedback-thread="${Number(thread.id)}"><div class="notification-card-head"><div><strong>${escapeHtml(thread.subject||'Feedback')}</strong><span>${escapeHtml(owner)} · ${escapeHtml(thread.category||'General Feedback')}</span></div><small>${renderDate(thread.updated_at||thread.created_at)}</small></div><div class="feedback-thread-meta">${feedbackStatusBadge(thread.status)} ${feedbackPriorityBadge(thread.priority)} <span>${Number(thread.message_count||msgs.length||0)} message${Number(thread.message_count||msgs.length||0)===1?'':'s'}</span></div><p>${escapeHtml((last?.message||thread.last_message||'').slice(0,300))}${(last?.message||thread.last_message||'').length>300?'…':''}</p><div class="notification-actions">${actions}</div></div>`;
 }
 function adminFeedbackThreads(){return Array.isArray(window.FEEDBACK_THREADS)?window.FEEDBACK_THREADS.filter(t=>!t.archived_at):[];}
 function renderAdminFeedbackInterface(selectedId=null){
@@ -165,7 +156,7 @@ function renderAdminFeedbackInterface(selectedId=null){
    <div class="feedback-stat-card total"><span class="material-symbols-outlined">forum</span><div><strong>${counts.all}</strong><span>Total active</span></div></div>
    <div class="feedback-stat-card attention"><span class="material-symbols-outlined">mark_email_unread</span><div><strong>${counts.new}</strong><span>Needs review</span></div></div>
    <div class="feedback-stat-card review"><span class="material-symbols-outlined">pending_actions</span><div><strong>${counts.review}</strong><span>In review</span></div></div>
-   <div class="feedback-stat-card replied"><span class="material-symbols-outlined">reply</span><div><strong>${counts.replied}</strong><span>Awaiting employee</span></div></div>
+   <div class="feedback-stat-card replied"><span class="material-symbols-outlined">forum</span><div><strong>${counts.replied}</strong><span>Awaiting employee</span></div></div>
    <div class="feedback-stat-card urgent"><span class="material-symbols-outlined">priority_high</span><div><strong>${counts.urgent}</strong><span>High / critical</span></div></div>`;
  if(!threads.length){
    root.innerHTML='<div class="admin-feedback-empty"><span class="material-symbols-outlined">forum</span><strong>No employee feedback yet</strong><p>New feedback submitted by employees will appear here.</p></div>';return;
@@ -183,11 +174,10 @@ function renderAdminFeedbackInterface(selectedId=null){
    </button>`;
  }).join('');
  const messages=(current.messages||[]).map(m=>`<div class="admin-feedback-message ${Number(m.sender_user_id)===Number(current.user_id)?'employee':'admin'}"><div class="admin-feedback-message-head"><strong>${escapeHtml(m.sender_name||'User')}</strong><span>${escapeHtml(m.sender_role||'')}</span><small>${renderDate(m.created_at)}</small></div><p>${escapeHtml(m.message||'')}</p></div>`).join('');
- const disabled=current.status==='Resolved'?'disabled':'';
  const lastMessage=(current.messages||[]).slice(-1)[0];
- const guidance=current.status==='Resolved'
-   ? 'This conversation is resolved. Reopen it by changing the status if the employee sends a new follow-up.'
-   : (lastMessage?.sender_role==='Staff'?'The employee sent the latest message. Review it and reply when action is required.':'Replies stay in this thread and notify the employee.');
+ const guidance=lastMessage?.sender_role==='Staff'
+   ? 'Employee feedback is read-only for administrators. Use Delete to move the feedback to the archive.'
+   : 'This feedback is retained as a historical conversation. Administrators cannot reply.';
  root.innerHTML=`<div class="admin-feedback-list">
    <div class="admin-feedback-list-head"><div><strong>Feedback Inbox</strong><span>${threads.length} active thread${threads.length===1?'':'s'}</span></div><span class="material-symbols-outlined">inbox</span></div>
    <div class="admin-feedback-inbox-tools">
@@ -201,19 +191,13 @@ function renderAdminFeedbackInterface(selectedId=null){
  <div class="admin-feedback-detail">
    <div class="admin-feedback-detail-head">
      <div class="admin-feedback-detail-title"><div class="feedback-detail-kicker">FEEDBACK THREAD #${Number(current.id)}</div><h3>${escapeHtml(current.subject||'Feedback')}</h3><div class="admin-feedback-detail-meta"><span><span class="material-symbols-outlined">person</span>${escapeHtml(current.owner_name||'Staff')}</span><span><span class="material-symbols-outlined">category</span>${escapeHtml(current.category||'General Feedback')}</span>${feedbackPriorityBadge(current.priority)}${feedbackStatusBadge(current.status)}</div></div>
-     <div class="admin-feedback-status-actions"><select onchange="updateFeedbackStatus(${Number(current.id)},this.value)" aria-label="Feedback status"><option ${current.status==='New'?'selected':''}>New</option><option ${current.status==='In Review'?'selected':''}>In Review</option><option ${current.status==='Replied'?'selected':''}>Replied</option><option ${current.status==='Resolved'?'selected':''}>Resolved</option></select><button type="button" class="gw-btn secondary" onclick="archiveFeedback(${Number(current.id)})"><span class="material-symbols-outlined">archive</span>Archive</button><button type="button" class="gw-btn btn-danger" onclick="deleteFeedbackThread(${Number(current.id)})"><span class="material-symbols-outlined">delete</span>Delete</button></div>
+     <div class="admin-feedback-status-actions"><button type="button" class="gw-btn btn-danger" onclick="deleteFeedbackThread(${Number(current.id)})"><span class="material-symbols-outlined">delete</span>Delete</button></div>
    </div>
    <div class="admin-feedback-context"><span class="material-symbols-outlined">info</span><span>${escapeHtml(guidance)}</span></div>
    <div class="admin-feedback-conversation">${messages||'<div class="notification-empty"><strong>No messages</strong></div>'}</div>
-   <form class="admin-feedback-reply" onsubmit="submitAdminFeedbackReply(event,${Number(current.id)})">
-     <div class="feedback-compose-head"><label for="adminFeedbackReply">Reply to employee</label><span id="adminFeedbackReplyCount">0 / 3000</span></div>
-     <div class="admin-feedback-compose"><textarea id="adminFeedbackReply" maxlength="3000" rows="4" placeholder="${current.status==='Resolved'?'Change the status to reopen this conversation.':'Write a clear, respectful response to the employee...'}" ${disabled} required></textarea><button class="gw-btn primary" type="submit" ${disabled}><span class="material-symbols-outlined">send</span>Send Reply</button></div>
-     <small>Keep the response specific: acknowledge the concern, explain the action taken, and state any next step or expected follow-up.</small>
-   </form>
+   <div class="admin-feedback-readonly-note"><span class="material-symbols-outlined">visibility</span><span>Administrator view only. Replying is disabled.</span></div>
  </div>`;
  const chat=root.querySelector('.admin-feedback-conversation'); if(chat)chat.scrollTop=chat.scrollHeight;
- const replyBox=document.getElementById('adminFeedbackReply'),replyCount=document.getElementById('adminFeedbackReplyCount');
- if(replyBox&&replyCount){const update=()=>replyCount.textContent=`${replyBox.value.length} / 3000`;replyBox.addEventListener('input',update);update();}
 }
 function renderFeedbackDataTable(){
  const body=document.getElementById('feedbackDataTableBody'); if(!body)return;
@@ -223,8 +207,8 @@ function renderFeedbackDataTable(){
  body.innerHTML=threads.map(t=>{
    const last=Array.isArray(t.messages)&&t.messages.length?t.messages[t.messages.length-1]:null;
    const actions=isAdmin
-     ? `<button type="button" class="gw-btn primary" onclick="showFeedbackThread(${Number(t.id)})"><span class="material-symbols-outlined">forum</span>View</button><button type="button" class="gw-btn secondary" onclick="showFeedbackReply(${Number(t.id)})"><span class="material-symbols-outlined">reply</span>Reply</button><button type="button" class="gw-btn btn-danger" onclick="deleteFeedbackThread(${Number(t.id)})"><span class="material-symbols-outlined">delete</span>Delete</button>`
-     : `<button type="button" class="gw-btn primary" onclick="showFeedbackThread(${Number(t.id)})"><span class="material-symbols-outlined">forum</span>View</button><button type="button" class="gw-btn secondary" onclick="showStaffFeedbackReply(${Number(t.id)})"><span class="material-symbols-outlined">reply</span>Reply</button><button type="button" class="gw-btn btn-danger" onclick="deleteStaffFeedback(${Number(t.id)})"><span class="material-symbols-outlined">delete</span>Delete</button>`;
+     ? `<button type="button" class="gw-btn primary" onclick="showFeedbackThread(${Number(t.id)})"><span class="material-symbols-outlined">forum</span>View</button><button type="button" class="gw-btn btn-danger" onclick="deleteFeedbackThread(${Number(t.id)})"><span class="material-symbols-outlined">delete</span>Delete</button>`
+     : `<button type="button" class="gw-btn primary" onclick="showFeedbackThread(${Number(t.id)})"><span class="material-symbols-outlined">forum</span>View</button><button type="button" class="gw-btn btn-danger" onclick="deleteStaffFeedback(${Number(t.id)})"><span class="material-symbols-outlined">undo</span>Unsend</button>`;
    const ownerCell=isAdmin?`<td><div class="feedback-table-person">${escapeHtml(t.owner_name||'Employee')}</div></td>`:'';
    return `<tr>${ownerCell}<td><div class="feedback-table-subject">${escapeHtml(t.subject||'Feedback')}</div><div class="feedback-detail-kicker">${escapeHtml(t.category||'General Feedback')} · ${feedbackPriorityBadge(t.priority)}</div></td><td><div class="feedback-table-preview">${escapeHtml(last?.message||t.last_message||'No message')}</div><div class="feedback-detail-kicker">${escapeHtml(last?.sender_name||t.last_sender_name||'User')}</div></td><td>${feedbackStatusBadge(t.status)}</td><td class="feedback-table-date">${renderDate(t.updated_at||t.created_at)}</td><td><div class="feedback-table-actions">${actions}</div></td></tr>`;
  }).join('');
@@ -294,29 +278,12 @@ async function reloadFeedbackThreads(){
  return false;
 }
 // Single place that sends an administrator reply, so every Reply button behaves the same.
-async function postAdminFeedbackReply(threadId,message){
- const body=new URLSearchParams({action:'reply',thread_id:String(threadId),feedback:message,csrf_token:String(window.CSRF_TOKEN||''),return_to:window.location.pathname+window.location.search});
- const r=await fetch(`${window.APP_BASE||''}/includes/feedback.php`,{method:'POST',credentials:'same-origin',headers:{'X-Requested-With':'XMLHttpRequest','Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:body.toString()});
- const d=await r.json().catch(()=>({ok:false,message:'Invalid server response.'}));
- if(!r.ok||!d.ok)throw new Error(d.message||'Unable to send reply.');
- // Legacy threads have negative IDs until their first reply; reload to pick up the real ID and history.
- await reloadFeedbackThreads();
- return Number(d.thread_id||threadId);
-}
-async function submitAdminFeedbackReply(event,threadId){
- event.preventDefault(); if(window.CURRENT_USER?.role!=='Administrator')return;
- const form=event.currentTarget; const textarea=form.querySelector('textarea'); const submit=form.querySelector('button[type="submit"]'); const message=(textarea?.value||'').trim();
- if(!message||submit?.disabled){textarea?.focus();return;}
- if(message.length>3000){alert('Reply must be 3,000 characters or fewer.');return;}
- if(submit){submit.disabled=true;submit.dataset.originalText=submit.innerHTML;submit.innerHTML='<span class="material-symbols-outlined">hourglass_top</span>Sending…';}
- try{
-   const selectedId=await postAdminFeedbackReply(threadId,message);
-   renderAdminFeedbackInterface(selectedId);
-   if(document.getElementById('feedbackDataTableBody'))renderFeedbackDataTable();
- }catch(e){
-   if(submit){submit.disabled=false;submit.innerHTML=submit.dataset.originalText||'Send Reply';}
-   alert(e.message||'Unable to send reply.');
- }
+function showAdminFeedbackModal(){
+ document.getElementById('userMenu')?.classList.remove('open');
+ if(window.CURRENT_USER?.role!=='Administrator')return;
+ const root=document.getElementById('modalRoot'); if(!root)return;
+ root.innerHTML=`<div class="gw-modal-backdrop" onclick="if(event.target===this)closeModal()"><div class="gw-modal feedback-modal admin-feedback-modal"><div class="gw-modal-head"><div><strong>Employee Feedback</strong><small>View employee feedback and move unwanted feedback to the archive.</small></div><button class="gw-modal-close" onclick="closeModal()">×</button></div><div class="gw-modal-body"><div id="adminFeedbackStats" class="feedback-stat-grid"></div><div id="adminFeedbackWorkspace"><div class="data-storage-loading"><span class="material-symbols-outlined">progress_activity</span>Loading employee feedback...</div></div></div></div></div>`;
+ fetch(`${window.APP_BASE||''}/includes/feedback_threads.php`,{credentials:'same-origin',headers:{'X-Requested-With':'XMLHttpRequest'},cache:'no-store'}).then(r=>r.json()).then(d=>{if(!d.ok)throw new Error(d.message||'Unable to load feedback.');window.FEEDBACK_THREADS=Array.isArray(d.threads)?d.threads:[];renderAdminFeedbackInterface();}).catch(e=>{const box=document.getElementById('adminFeedbackWorkspace');if(box)box.innerHTML=`<div class="notification-empty"><strong>Unable to load employee feedback.</strong><p>${escapeHtml(e.message||'Please try again.')}</p></div>`;});
 }
 function openAdminFeedbackInterface(){document.getElementById('admin-feedback-panel')?.scrollIntoView({behavior:'smooth',block:'start'});renderAdminFeedbackInterface();}
 async function handleNotificationBell(){
@@ -327,7 +294,7 @@ async function handleNotificationBell(){
  }catch(e){}
  const isStaff=window.CURRENT_USER?.role==='Staff';
  const notes=isStaff?(window.STAFF_NOTIFICATIONS||[]):(window.ADMIN_NOTIFICATIONS||[]);
- const feedbackNotes=notes.filter(n=>(n.type==='feedback'||n.type==='feedback_reply')&&Number(n.is_read)===0);
+ const feedbackNotes=notes.filter(n=>(n.type==='feedback')&&Number(n.is_read)===0);
  let target=null;
  if(feedbackNotes.length){
    const n=feedbackNotes.slice().sort((a,b)=>Number(b.id)-Number(a.id))[0];
@@ -365,7 +332,7 @@ async function showNotificationModal(fresh=true){
  // notifications that have not yet been migrated into a thread, preventing
  // duplicate cards in the notification bell.
  const feedbackNotes=notes.filter(n=>
-   (n.type==='feedback'||n.type==='feedback_reply') &&
+   (n.type==='feedback') &&
    !(Number(n.feedback_thread_id)||0)
  );
  const activeThreads=threads;
@@ -378,7 +345,7 @@ async function showNotificationModal(fresh=true){
    const latest=thread && Array.isArray(thread.messages) && thread.messages.length ? thread.messages[thread.messages.length-1] : null;
    const isReply=thread && latest && String(latest.sender_role||'').toLowerCase()==='administrator';
    const unread=Number(n.is_read)===0;
-   const viewLabel=isStaff && (isReply || n.type==='feedback_reply') ? 'View Reply' : 'View Conversation';
+   const viewLabel=isStaff && (isReply || n.type==='feedback') ? 'View Reply' : 'View Conversation';
    const viewAction=thread
      ? `showFeedbackThread(${threadId})`
      : `showNotificationDetails(${Number(n.id)})`;
@@ -390,7 +357,7 @@ async function showNotificationModal(fresh=true){
        <div class="notification-card-title-row"><span class="feedback-notification-icon ${isReply?'reply':''}"><span class="material-symbols-outlined">${isReply?'reply':'feedback'}</span></span><div><strong>${escapeHtml(n.title||'Feedback')}</strong><span>${escapeHtml(n.sender_name||'Employee')} · ${escapeHtml(n.sender_role||'Staff')}</span></div></div>
        <small>${renderDate(n.created_at)}</small>
      </div>
-     <div class="feedback-notification-status">${unread?'<span class="feedback-unread-pill"><span class="feedback-unread-dot"></span>New</span>':''}${isReply?'<span class="feedback-reply-pill"><span class="material-symbols-outlined">reply</span>Administrator replied</span>':''}</div>
+     <div class="feedback-notification-status">${unread?'<span class="feedback-unread-pill"><span class="feedback-unread-dot"></span>New</span>':''}${isReply?'<span class="feedback-reply-pill"><span class="material-symbols-outlined">forum</span>Administrator replied</span>':''}</div>
      <p>${escapeHtml(n.message||'')}</p>
      ${thread?`<div class="notification-actions"><button type="button" class="gw-btn primary" onclick="showFeedbackThread(${threadId})"><span class="material-symbols-outlined">${isReply&&isStaff?'reply':'forum'}</span>${viewLabel}</button>${deleteAction}</div>`:''}
    </div>`;
@@ -398,7 +365,7 @@ async function showNotificationModal(fresh=true){
  const transferCards=transfer.map(n=>`<div class="notification-card ${Number(n.is_read)===0?'unread':''}"><div class="notification-card-head"><div><strong>${escapeHtml(n.title||'Notification')}</strong><span>${escapeHtml(n.sender_name||'System')} · ${escapeHtml(n.sender_role||'System')}</span></div><small>${renderDate(n.created_at)}</small></div><p>${escapeHtml(n.message||'')}</p></div>`).join('');
  root.innerHTML=`<div class="gw-modal-backdrop" onclick="if(event.target===this)closeModal()"><div class="gw-modal notifications-modal feedback-inbox-modal">
  <div class="gw-modal-head"><div><strong>${title}</strong><small>${subtitle}</small></div><button class="gw-modal-close" onclick="closeModal()" aria-label="Close">×</button></div>
- <div class="gw-modal-body"><div class="feedback-inbox-toolbar"><div><strong>${threads.length}</strong><span>${isAdmin?'employee feedback thread'+(threads.length===1?'':'s'):'active feedback thread'+(threads.length===1?'':'s')}</span></div><div class="feedback-notification-summary"><span><span class="material-symbols-outlined">mark_email_unread</span>${notes.filter(n=>Number(n.is_read)===0).length} new</span><span><span class="material-symbols-outlined">reply</span>${threads.filter(t=>Array.isArray(t.messages)&&t.messages.length&&String(t.messages[t.messages.length-1].sender_role||'').toLowerCase()==='administrator').length} replied</span></div></div>${filterHtml}
+ <div class="gw-modal-body"><div class="feedback-inbox-toolbar"><div><strong>${threads.length}</strong><span>${isAdmin?'employee feedback thread'+(threads.length===1?'':'s'):'active feedback thread'+(threads.length===1?'':'s')}</span></div><div class="feedback-notification-summary"><span><span class="material-symbols-outlined">mark_email_unread</span>${notes.filter(n=>Number(n.is_read)===0).length} new</span><span><span class="material-symbols-outlined">forum</span>${threads.filter(t=>Array.isArray(t.messages)&&t.messages.length&&String(t.messages[t.messages.length-1].sender_role||'').toLowerCase()==='administrator').length} replied</span></div></div>${filterHtml}
  <div id="feedbackThreadList" class="notification-list">${cards}${feedbackNotificationCards}${transferCards}${(!cards&&!feedbackNotificationCards&&!transferCards)?`<div class="notification-empty"><span class="material-symbols-outlined">feedback</span><strong>${isAdmin?'No employee feedback yet':'No feedback yet'}</strong><p>${escapeHtml(subtitle)}</p></div>`:''}</div><div class="record-actions"><button class="gw-btn primary" onclick="closeModal()">Close</button></div></div></div></div>`;
  if(isAdmin) filterFeedbackInbox();
  refreshFeedbackDataTable();
@@ -421,90 +388,9 @@ function filterFeedbackInbox(){
 async function showFeedbackThread(threadId){
  const threads=Array.isArray(window.FEEDBACK_THREADS)?window.FEEDBACK_THREADS:[]; const t=threads.find(x=>Number(x.id)===Number(threadId)); if(!t)return;
  const root=document.getElementById('modalRoot'); if(!root)return; const isAdmin=window.CURRENT_USER?.role==='Administrator';
- // Opening a New employee feedback marks it as reviewed so the admin can manage it
- // from the inbox and the delete option becomes available for reviewed/replied items.
- if(isAdmin && t.status==='New'){
-   try{
-     const body=new URLSearchParams({action:'status',thread_id:String(threadId),status:'In Review',csrf_token:String(window.CSRF_TOKEN||''),return_to:window.location.pathname+window.location.search});
-     const r=await fetch(`${window.APP_BASE||''}/includes/feedback.php`,{method:'POST',credentials:'same-origin',headers:{'X-Requested-With':'XMLHttpRequest','Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:body.toString()});
-     const d=await r.json();
-     if(r.ok&&d.ok)t.status='In Review';
-   }catch(e){}
- }
  const msgs=(t.messages||[]).map(m=>`<div class="feedback-bubble ${Number(m.sender_user_id)===Number(t.user_id)?'feedback-bubble-in':'feedback-bubble-out'}"><strong>${escapeHtml(m.sender_name||'User')} · ${escapeHtml(m.sender_role||'')}</strong><small>${renderDate(m.created_at)}</small><p>${escapeHtml(m.message||'')}</p></div>`).join('');
- root.innerHTML=`<div class="gw-modal-backdrop" onclick="if(event.target===this)closeModal()"><div class="gw-modal feedback-modal feedback-thread-detail"><div class="gw-modal-head"><div><strong>${escapeHtml(t.subject||'Feedback')}</strong><small>${escapeHtml(t.owner_name||'Staff')} · ${escapeHtml(t.category||'General Feedback')} · ${feedbackStatusBadge(t.status)} ${feedbackPriorityBadge(t.priority)}</small></div><button class="gw-modal-close" onclick="closeModal()">×</button></div><div class="gw-modal-body"><div class="feedback-chat-scroll feedback-thread-history">${msgs||'<div class="notification-empty"><strong>No messages</strong></div>'}</div><div class="record-actions">${isAdmin?`<button class="gw-btn primary" onclick="showFeedbackReply(${Number(t.id)})">Reply</button><button class="gw-btn secondary" onclick="updateFeedbackStatus(${Number(t.id)},'Resolved')">Resolve</button><button class="gw-btn btn-danger" onclick="deleteFeedbackThread(${Number(t.id)})"><span class="material-symbols-outlined">delete</span>Delete</button>`:`<button class="gw-btn primary" onclick="showStaffFeedbackReply(${Number(t.id)})">Follow Up</button>`}<button class="gw-btn secondary" onclick="closeModal();showNotificationModal()">Back</button></div></div></div></div>`;
-}
-function showStaffFeedbackReply(threadId){
- const threads=Array.isArray(window.FEEDBACK_THREADS)?window.FEEDBACK_THREADS:[]; const t=threads.find(x=>Number(x.id)===Number(threadId)); if(!t)return;
- const root=document.getElementById('modalRoot'); if(!root)return;
- const history=(t.messages||[]).map(m=>`<div class="feedback-bubble ${Number(m.sender_user_id)===Number(t.user_id)?'feedback-bubble-out':'feedback-bubble-in'}"><strong>${escapeHtml(m.sender_name||'User')} · ${escapeHtml(m.sender_role||'')}</strong><small>${renderDate(m.created_at)}</small><p>${escapeHtml(m.message||'')}</p></div>`).join('');
- root.innerHTML=`<div class="gw-modal-backdrop" onclick="if(event.target===this)closeModal()"><div class="gw-modal feedback-modal"><div class="gw-modal-head"><div><strong>Reply to Feedback</strong><small>${escapeHtml(t.subject||'Feedback')} · ${feedbackStatusBadge(t.status)}</small></div><button class="gw-modal-close" onclick="closeModal()">×</button></div><div class="gw-modal-body"><div class="feedback-chat-scroll feedback-thread-history">${history}</div><form id="staffFeedbackReplyForm" onsubmit="submitStaffFeedbackReply(event,${Number(t.id)})"><div class="feedback-message-field"><div class="feedback-label-row"><label for="staffFeedbackReplyText">Your Reply</label><span id="staffFeedbackReplyCount">0 / 3000</span></div><textarea id="staffFeedbackReplyText" name="feedback" rows="5" required maxlength="3000" placeholder="Add more information or respond to the administrator..."></textarea><div class="feedback-helper">Your reply will notify the administrator and move the feedback back to In Review.</div></div><div class="record-actions"><button type="button" class="gw-btn secondary" onclick="closeModal()">Cancel</button><button class="gw-btn primary" type="submit"><span class="material-symbols-outlined">send</span>Send Reply</button></div></form></div></div></div>`;
- const box=document.getElementById('staffFeedbackReplyText'),count=document.getElementById('staffFeedbackReplyCount');
- if(box&&count){const update=()=>count.textContent=`${box.value.length} / 3000`;box.addEventListener('input',update);update();box.focus();}
-} 
-async function submitStaffFeedbackReply(event,threadId){
- event.preventDefault();
- if(window.CURRENT_USER?.role!=='Staff')return;
- const form=event.currentTarget;
- const textarea=form.querySelector('textarea[name="feedback"]');
- const submit=form.querySelector('button[type="submit"]');
- const message=(textarea?.value||'').trim();
- if(!message){textarea?.focus();return;}
- if(message.length>3000){alert('Reply must be 3,000 characters or fewer.');return;}
- if(submit){submit.disabled=true;submit.dataset.originalHtml=submit.innerHTML;submit.innerHTML='<span class="material-symbols-outlined">hourglass_top</span>Sending…';}
- const body=new URLSearchParams({action:'staff_reply',thread_id:String(threadId),feedback:message,csrf_token:String(window.CSRF_TOKEN||''),return_to:window.location.pathname+window.location.search});
- try{
-   const r=await fetch(`${window.APP_BASE||''}/includes/feedback.php`,{method:'POST',credentials:'same-origin',headers:{'X-Requested-With':'XMLHttpRequest','Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:body.toString()});
-   const d=await r.json().catch(()=>({ok:false,message:'Invalid server response.'}));
-   if(!r.ok||!d.ok)throw new Error(d.message||'Unable to send reply.');
-   const rr=await fetch(`${window.APP_BASE||''}/includes/feedback_threads.php`,{credentials:'same-origin',headers:{'X-Requested-With':'XMLHttpRequest'},cache:'no-store'});
-   const rd=await rr.json().catch(()=>null);
-   if(rr.ok&&rd?.ok&&Array.isArray(rd.threads))window.FEEDBACK_THREADS=rd.threads;
-   const selectedId=Number(d.thread_id||threadId);
-   closeModal();
-   renderFeedbackDataTable();
-   if(selectedId>0)showFeedbackThread(selectedId);
- }catch(e){
-   if(submit){submit.disabled=false;submit.innerHTML=submit.dataset.originalHtml||'Send Reply';}
-   alert(e.message||'Unable to send reply.');
- }
-}
-function showFeedbackReply(threadId){
- const threads=Array.isArray(window.FEEDBACK_THREADS)?window.FEEDBACK_THREADS:[];
- const t=threads.find(x=>Number(x.id)===Number(threadId));
- if(!t || window.CURRENT_USER?.role!=='Administrator')return;
- const root=document.getElementById('modalRoot'); if(!root)return;
- const history=(t.messages||[]).map(m=>`<div class="feedback-bubble ${Number(m.sender_user_id)===Number(t.user_id)?'feedback-bubble-in':'feedback-bubble-out'}"><strong>${escapeHtml(m.sender_name||'User')} · ${escapeHtml(m.sender_role||'')}</strong><small>${renderDate(m.created_at)}</small><p>${escapeHtml(m.message||'')}</p></div>`).join('');
- root.innerHTML=`<div class="gw-modal-backdrop" onclick="if(event.target===this)closeModal()"><div class="gw-modal feedback-modal feedback-reply-modal"><div class="gw-modal-head"><div><strong>Reply to Feedback</strong><small>${escapeHtml(t.subject||'Feedback')} · ${escapeHtml(t.owner_name||'Staff')}</small></div><button class="gw-modal-close" onclick="closeModal()" aria-label="Close">×</button></div><div class="gw-modal-body"><div class="feedback-chat-scroll feedback-thread-history">${history||'<div class="notification-empty"><strong>No messages yet</strong></div>'}</div><form id="feedbackReplyForm" onsubmit="submitFeedbackReplyModal(event,${Number(t.id)})"><input type="hidden" name="csrf_token" value="${escapeHtml(window.CSRF_TOKEN||'')}"/><div class="feedback-message-field"><div class="feedback-label-row"><label for="feedbackReplyText">Your Reply</label><span id="feedbackReplyCount">0 / 3000</span></div><textarea id="feedbackReplyText" name="feedback" rows="6" required maxlength="3000" placeholder="Continue the conversation with the employee..."></textarea><div class="feedback-helper">The employee will receive a notification and this thread will be marked as Replied.</div></div><div class="record-actions"><button type="button" class="gw-btn secondary" onclick="closeModal()">Cancel</button><button class="gw-btn primary" type="submit"><span class="material-symbols-outlined">send</span>Send Reply</button></div></form></div></div></div>`;
- const box=document.getElementById('feedbackReplyText'),count=document.getElementById('feedbackReplyCount');
- if(box&&count){const update=()=>count.textContent=`${box.value.length} / 3000`;box.addEventListener('input',update);update();box.focus();}
-}
-async function submitFeedbackReplyModal(event,threadId){
- event.preventDefault();
- if(window.CURRENT_USER?.role!=='Administrator')return;
- const form=event.currentTarget;
- const textarea=form.querySelector('textarea[name="feedback"]');
- const submit=form.querySelector('button[type="submit"]');
- const message=(textarea?.value||'').trim();
- if(!message){textarea?.focus();return;}
- if(message.length>3000){alert('Reply must be 3,000 characters or fewer.');return;}
- if(submit?.disabled)return;
- if(submit){submit.disabled=true;submit.dataset.originalHtml=submit.innerHTML;submit.innerHTML='<span class="material-symbols-outlined">hourglass_top</span>Sending…';}
- try{
-   const selectedId=await postAdminFeedbackReply(threadId,message);
-   closeModal();
-   // Refresh whichever view the Reply button was clicked from.
-   if(document.getElementById('adminFeedbackWorkspace'))renderAdminFeedbackInterface(selectedId);
-   if(document.getElementById('feedbackDataTableBody')){renderFeedbackDataTable();if(selectedId)showFeedbackThread(selectedId);}
-   else if(!document.getElementById('adminFeedbackWorkspace'))showNotificationModal(false);
- }catch(e){
-   if(submit){submit.disabled=false;submit.innerHTML=submit.dataset.originalHtml||'Send Reply';}
-   alert(e.message||'Unable to send reply.');
- }
-}
-async function updateFeedbackStatus(threadId,status){
- const body=new URLSearchParams({action:'status',thread_id:String(threadId),status:String(status),csrf_token:String(window.CSRF_TOKEN||''),return_to:window.location.pathname+window.location.search});
- try{const r=await fetch(`${window.APP_BASE||''}/includes/feedback.php`,{method:'POST',credentials:'same-origin',headers:{'X-Requested-With':'XMLHttpRequest','Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:body.toString()}); const d=await r.json(); if(!r.ok||!d.ok)throw new Error(d.message||'Unable to update feedback status.'); const t=(window.FEEDBACK_THREADS||[]).find(x=>Number(x.id)===Number(threadId)); if(t){t.status=status;t.resolved_at=status==='Resolved'?new Date().toISOString():null;} if(document.getElementById('adminFeedbackWorkspace'))renderAdminFeedbackInterface(threadId); else showNotificationModal(false);}catch(e){alert(e.message||'Unable to update feedback status.');}
+ const action=isAdmin ? `<button class="gw-btn btn-danger" onclick="deleteFeedbackThread(${Number(t.id)})"><span class="material-symbols-outlined">delete</span>Delete</button>` : `<button class="gw-btn btn-danger" onclick="deleteStaffFeedback(${Number(t.id)})"><span class="material-symbols-outlined">undo</span>Unsend Feedback</button>`;
+ root.innerHTML=`<div class="gw-modal-backdrop" onclick="if(event.target===this)closeModal()"><div class="gw-modal feedback-modal feedback-thread-detail"><div class="gw-modal-head"><div><strong>${escapeHtml(t.subject||'Feedback')}</strong><small>${escapeHtml(t.owner_name||'Staff')} · ${escapeHtml(t.category||'General Feedback')} · ${feedbackStatusBadge(t.status)} ${feedbackPriorityBadge(t.priority)}</small></div><button class="gw-modal-close" onclick="closeModal()">×</button></div><div class="gw-modal-body"><div class="feedback-chat-scroll feedback-thread-history">${msgs||'<div class="notification-empty"><strong>No messages</strong></div>'}</div><div class="record-actions">${action}<button class="gw-btn secondary" onclick="closeModal()">Close</button></div></div></div></div>`;
 }
 async function deleteFeedbackThread(threadId){
  const id=Number(threadId)||0;
@@ -524,11 +410,7 @@ async function deleteFeedbackThread(threadId){
    showNotificationModal(false);
  }catch(e){alert(e.message||'Unable to delete feedback.');}
 }
-async function archiveFeedback(threadId){
- if(!confirm('Archive this feedback? It will be removed from the active inbox but kept in the feedback history.'))return;
- const body=new URLSearchParams({action:'archive',thread_id:String(threadId),csrf_token:String(window.CSRF_TOKEN||''),return_to:window.location.pathname+window.location.search});
- try{const r=await fetch(`${window.APP_BASE||''}/includes/feedback.php`,{method:'POST',credentials:'same-origin',headers:{'X-Requested-With':'XMLHttpRequest','Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:body.toString()}); const d=await r.json(); if(!r.ok||!d.ok)throw new Error(d.message||'Unable to archive feedback.'); window.FEEDBACK_THREADS=(window.FEEDBACK_THREADS||[]).filter(x=>Number(x.id)!==Number(threadId)); showNotificationModal(false);}catch(e){alert(e.message||'Unable to archive feedback.');}
-}
+
 async function deleteNotification(notificationId,side=null){
  const id=Number(notificationId)||0;if(!id)return; const isStaff=window.CURRENT_USER?.role==='Staff'; if(!isStaff)return; if(side==='admin')return; if(!confirm('Delete this notification from your account?'))return;
  const body=new URLSearchParams({action:'delete_notification',notification_id:String(id),csrf_token:String(window.CSRF_TOKEN||''),return_to:window.location.pathname+window.location.search});
@@ -841,26 +723,23 @@ function showLogoutModal(){
 })();
 
 /* Archive: deleted records/files are retained and can be recovered into data storage/database. */
-function showArchiveModal(){
-  document.getElementById('userMenu')?.classList.remove('open');
-  const root=document.getElementById('modalRoot'); if(!root)return;
-  root.innerHTML=`<div class="gw-modal-backdrop archive-backdrop" onclick="if(event.target===this)closeModal()"><div class="gw-modal archive-modal">
-    <div class="gw-modal-head"><div><strong>Archive</strong><small>Deleted data and files retained for recovery.</small></div><button class="gw-modal-close" onclick="closeModal()">×</button></div>
-    <div class="gw-modal-body"><div id="archiveList" class="data-storage-list"><div class="data-storage-loading"><span class="material-symbols-outlined">progress_activity</span>Loading archive...</div></div></div>
-  </div></div>`;
-  fetch(`${window.APP_BASE||''}/includes/archive.php?action=list`,{credentials:'same-origin'})
-   .then(r=>r.json()).then(data=>{
-    const box=document.getElementById('archiveList'); if(!box)return;
-    if(!data.ok||!data.items?.length){box.innerHTML='<div class="notification-empty"><span class="material-symbols-outlined">inventory_2</span><strong>Archive is empty</strong><p>Deleted data and files will appear here.</p></div>';return;}
-    box.innerHTML=data.items.map(x=>`<div class="data-storage-item archive-item">
-      <span class="data-storage-file-icon material-symbols-outlined">${x.item_type==='file'?'description':'dataset'}</span>
-      <span class="data-storage-file-main"><strong>${escapeHtml(x.item_name)}</strong><small>${escapeHtml(x.item_type)} · Deleted ${escapeHtml(x.deleted_at||'')}</small></span>
-      <div style="display:flex;gap:6px;align-items:center">
-        <button class="gw-btn primary" type="button" onclick="recoverArchive(${Number(x.id)})"><span class="material-symbols-outlined">restore</span>Recover</button>
-        <button class="gw-btn btn-danger" type="button" onclick="deleteArchiveItem(${Number(x.id)},${JSON.stringify(String(x.item_name))})"><span class="material-symbols-outlined">delete_forever</span>Delete</button>
-      </div>
-    </div>`).join('');
-   }).catch(()=>{const box=document.getElementById('archiveList');if(box)box.innerHTML='<div class="notification-empty"><strong>Unable to load archive.</strong><p>Please try again.</p></div>';});
+function showArchiveModal(filter='all'){
+ document.getElementById('userMenu')?.classList.remove('open');
+ if(window.CURRENT_USER?.role!=='Administrator'){alert('Only administrators can manage the archive.');return;}
+ const root=document.getElementById('modalRoot'); if(!root)return;
+ root.innerHTML=`<div class="gw-modal-backdrop archive-backdrop" onclick="if(event.target===this)closeModal()"><div class="gw-modal archive-modal">
+   <div class="gw-modal-head"><div><strong>Archive</strong><small>Deleted data is retained here before permanent deletion.</small></div><button class="gw-modal-close" onclick="closeModal()">×</button></div>
+   <div class="gw-modal-body"><div class="archive-toolbar"><select id="archiveTypeFilter" onchange="showArchiveModal(this.value)"><option value="all" ${filter==='all'?'selected':''}>All archived data</option><option value="feedback" ${filter==='feedback'?'selected':''}>Employee Feedback</option><option value="file" ${filter==='file'?'selected':''}>Files</option><option value="record" ${filter==='record'?'selected':''}>Records</option></select><div class="archive-backup-actions"><button class="gw-btn secondary" type="button" onclick="backupArchive('all')"><span class="material-symbols-outlined">download</span>Backup All</button><button class="gw-btn secondary" type="button" onclick="backupArchive('feedback')"><span class="material-symbols-outlined">feedback</span>Backup Feedback</button></div></div><div id="archiveList" class="data-storage-list"><div class="data-storage-loading"><span class="material-symbols-outlined">progress_activity</span>Loading archive...</div></div></div>
+ </div></div>`;
+ fetch(`${window.APP_BASE||''}/includes/archive.php?action=list&type=${encodeURIComponent(filter)}`,{credentials:'same-origin',cache:'no-store'}).then(r=>r.json()).then(data=>{
+   const box=document.getElementById('archiveList'); if(!box)return;
+   if(!data.ok||!data.items?.length){box.innerHTML='<div class="notification-empty"><span class="material-symbols-outlined">inventory_2</span><strong>Archive is empty</strong><p>Deleted data in this category will appear here.</p></div>';return;}
+   box.innerHTML=data.items.map(x=>`<div class="data-storage-item archive-item"><span class="data-storage-file-icon material-symbols-outlined">${x.item_type==='file'?'description':(x.item_type==='feedback'?'feedback':'dataset')}</span><span class="data-storage-file-main"><strong>${escapeHtml(x.item_name)}</strong><small>${escapeHtml(x.item_type)} · Deleted ${escapeHtml(x.deleted_at||'')}</small></span><div style="display:flex;gap:6px;align-items:center"><button class="gw-btn primary" type="button" onclick="recoverArchive(${Number(x.id)})"><span class="material-symbols-outlined">restore</span>Recover</button><button class="gw-btn btn-danger" type="button" onclick="deleteArchiveItem(${Number(x.id)},${JSON.stringify(String(x.item_name))})"><span class="material-symbols-outlined">delete_forever</span>Delete Permanently</button></div></div>`).join('');
+ }).catch(()=>{const box=document.getElementById('archiveList');if(box)box.innerHTML='<div class="notification-empty"><strong>Unable to load archive.</strong><p>Please try again.</p></div>';});
+}
+function backupArchive(type='all'){
+ if(window.CURRENT_USER?.role!=='Administrator')return;
+ window.location.href=`${window.APP_BASE||''}/includes/archive.php?action=backup&type=${encodeURIComponent(type)}`;
 }
 function recoverArchive(id){
   const fd=new FormData(); fd.append('csrf_token',window.CSRF_TOKEN||''); fd.append('id',id); fd.append('action','recover');
@@ -890,4 +769,64 @@ function deleteArchiveItem(id,name){
 })();
 
 
-window.addEventListener('DOMContentLoaded',()=>{setTimeout(()=>{refreshFeedbackDataTable();},0);});
+
+
+/* Global table usability: five visible rows, horizontal access to every column,
+   and draggable column widths. */
+(function initTableEnhancements(){
+  function makeResizable(table){
+    if(table.dataset.resizable==='1') return;
+    table.dataset.resizable='1';
+    table.querySelectorAll('thead th').forEach(th=>{
+      const grip=document.createElement('span');
+      grip.className='table-column-resizer'; grip.setAttribute('aria-hidden','true');
+      th.appendChild(grip);
+      let startX=0,startW=0;
+      grip.addEventListener('mousedown',e=>{
+        e.preventDefault(); e.stopPropagation();
+        startX=e.clientX; startW=th.getBoundingClientRect().width;
+        const move=ev=>{ const width=Math.max(80,startW+(ev.clientX-startX)); th.style.width=width+'px'; th.style.minWidth=width+'px'; };
+        const up=()=>{document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);};
+        document.addEventListener('mousemove',move); document.addEventListener('mouseup',up);
+      });
+    });
+  }
+  function limitRows(table){
+    if(table.dataset.rowLimitApplied==='1') return;
+    table.dataset.rowLimitApplied='1';
+    const rows=[...table.querySelectorAll('tbody > tr')].filter(r=>!r.querySelector('.empty'));
+    rows.forEach((row,i)=>{if(i>=5)row.hidden=true;});
+  }
+  function init(){
+    document.querySelectorAll('.data-table,.feedback-data-table').forEach(t=>{makeResizable(t);limitRows(t);});
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+  window.initTableEnhancements=init;
+})();
+
+/* Convert inline update forms into centered modal editors without changing their
+   POST actions or database workflow. */
+(function initUpdatePopups(){
+  function openFormModal(form){
+    const root=document.getElementById('modalRoot'); if(!root)return;
+    const clone=form.cloneNode(true);
+    clone.removeAttribute('style');
+    clone.classList.add('centered-update-form');
+    root.innerHTML=`<div class="gw-modal-backdrop" onclick="if(event.target===this)closeModal()"><div class="gw-modal update-form-modal"><div class="gw-modal-head"><div><strong>Update Record</strong><small>Edit the selected record and save the existing database update.</small></div><button class="gw-modal-close" type="button" onclick="closeModal()">×</button></div><div class="gw-modal-body"></div></div></div>`;
+    const body=root.querySelector('.gw-modal-body'); if(!body)return;
+    body.appendChild(clone);
+    clone.addEventListener('submit',()=>{const submit=clone.querySelector('button[type="submit"],button:not([type])');if(submit){submit.disabled=true;submit.innerHTML='<span class="material-symbols-outlined">hourglass_top</span>Saving…';}});
+  }
+  function init(){
+    document.querySelectorAll('details').forEach(details=>{
+      const form=details.querySelector('form');
+      const action=form?.querySelector('input[name="action"]')?.value||'';
+      if(!form || !/^update_/i.test(action) || details.dataset.updateModal==='1')return;
+      details.dataset.updateModal='1';
+      const summary=details.querySelector('summary'); if(!summary)return;
+      summary.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();openFormModal(form);});
+      form.hidden=true;
+    });
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+})();

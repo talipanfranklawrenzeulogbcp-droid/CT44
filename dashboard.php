@@ -11,7 +11,6 @@ $u=current_user();
 $loginDate=(string)($_GET['login_date']??'');
 $showAllLogins=isset($_GET['login_all']) && $_GET['login_all']==='1';
 $loginHistory = (($u['role'] ?? '') === 'Administrator') ? service('reports')->loginHistory($showAllLogins?null:5,$loginDate) : [];
-$initialFeedbackThreads = (($u['role'] ?? '') === 'Administrator') ? feedback_threads_for_user(true) : ((($u['role'] ?? '') === 'Staff') ? feedback_threads_for_user(false) : []);
 require_once __DIR__.'/includes/config.php';
 page_header('Reports, Analysis & Dashboard','dashboard'); show_flash(); ?>
 <div class="gw-breadcrumb"><span class="material-symbols-outlined">home</span><span>Great Solomon Manpower Services Inc.</span><span>/</span><strong>Reports, Analysis &amp; Dashboard</strong></div>
@@ -35,25 +34,13 @@ page_header('Reports, Analysis & Dashboard','dashboard'); show_flash(); ?>
 <section class="gw-quick-actions">
 <a href="<?=e(url('/modules/health_safety/index.php'))?>">Health &amp; Safety</a>
 <a href="<?=e(url('/modules/legal_compliance/index.php'))?>">Legal &amp; Compliance</a>
-<?php if (($u['role'] ?? '') === 'Administrator'): ?><a href="#feedback-table-panel"><span class="material-symbols-outlined">feedback</span>Employee Feedback</a><a href="<?=e(url('/modules/system_admin_security/index.php'))?>">Security</a><?php endif; ?>
+<?php if (($u['role'] ?? '') === 'Administrator'): ?><a href="<?=e(url('/modules/system_admin_security/index.php'))?>">Security</a><?php endif; ?>
 <a href="<?=e(url('/modules/asset_equipment/index.php'))?>">Assets</a>
 <form method="get" class="date-filter dashboard-date-filter" aria-label="Report date filter">
   <input type="date" name="date" value="<?=e($reportDate)?>" aria-label="Filter reports by date">
   <button class="gw-btn secondary" type="submit"><span class="material-symbols-outlined">filter_alt</span> Filter</button>
   <?php if($reportDate): ?><a class="gw-btn secondary" href="<?=e(url('/dashboard.php'))?>"><span class="material-symbols-outlined">close</span> Clear</a><?php endif; ?>
 </form>
-</section>
-
-<section class="gw-panel feedback-table-panel" id="feedback-table-panel">
-  <div class="gw-panel-head feedback-table-head">
-    <div><div class="chart-title-row"><span class="material-symbols-outlined">forum</span><h2><?= (($u['role'] ?? '') === 'Administrator') ? 'Employee Feedback' : 'My Feedback' ?></h2></div><span class="chart-subtitle"><?= (($u['role'] ?? '') === 'Administrator') ? 'Reply to or delete employee feedback directly from the table.' : 'View your submitted feedback, administrator replies, and manage your conversations.' ?></span></div>
-    <?php if (($u['role'] ?? '') === 'Staff'): ?><button type="button" class="gw-btn primary" onclick="showFeedbackModal()"><span class="material-symbols-outlined">add_comment</span>New Feedback</button><?php endif; ?>
-  </div>
-  <div class="feedback-table-wrap"><table class="feedback-data-table"><thead><tr><?php if (($u['role'] ?? '') === 'Administrator'): ?><th>Employee</th><?php endif; ?><th>Subject</th><th>Latest Message</th><th>Status</th><th>Updated</th><th>Actions</th></tr></thead><tbody id="feedbackDataTableBody">
-  <?php if (!$initialFeedbackThreads): ?><tr><td colspan="<?= (($u['role'] ?? '') === 'Administrator') ? 6 : 5 ?>" class="feedback-table-empty"><span class="material-symbols-outlined">forum</span><strong><?= (($u['role'] ?? '') === 'Administrator') ? 'No employee feedback yet' : 'No feedback submitted yet' ?></strong><span><?= (($u['role'] ?? '') === 'Administrator') ? 'Employee feedback will appear here when submitted.' : 'Submit feedback to start a conversation with the administrator.' ?></span></td></tr>
-  <?php else: foreach ($initialFeedbackThreads as $ft): $lastMsg = !empty($ft['messages']) ? $ft['messages'][count($ft['messages'])-1] : null; $fid=(int)($ft['id']??0); ?>
-    <tr><?php if (($u['role'] ?? '') === 'Administrator'): ?><td><?=e($ft['owner_name']??'Employee')?></td><?php endif; ?><td><div class="feedback-table-subject"><?=e($ft['subject']??'Feedback')?></div><div class="feedback-detail-kicker"><?=e($ft['category']??'General Feedback')?> · <?=e($ft['priority']??'Medium')?></div></td><td><div class="feedback-table-preview"><?=e($lastMsg['message']??$ft['last_message']??'No message')?></div><div class="feedback-detail-kicker"><?=e($lastMsg['sender_name']??$ft['last_sender_name']??'User')?></div></td><td><span class="feedback-status-badge"><?=e($ft['status']??'New')?></span></td><td class="feedback-table-date"><?=e($ft['updated_at']??$ft['created_at']??'')?></td><td><div class="feedback-table-actions"><?php if (($u['role'] ?? '') === 'Administrator'): ?><button type="button" class="gw-btn primary" onclick="showFeedbackThread(<?=$fid?>)">View</button><button type="button" class="gw-btn secondary" onclick="showFeedbackReply(<?=$fid?>)">Reply</button><button type="button" class="gw-btn btn-danger" onclick="deleteFeedbackThread(<?=$fid?>)">Delete</button><?php else: ?><button type="button" class="gw-btn primary" onclick="showFeedbackThread(<?=$fid?>)">View</button><button type="button" class="gw-btn secondary" onclick="showStaffFeedbackReply(<?=$fid?>)">Reply</button><button type="button" class="gw-btn btn-danger" onclick="deleteStaffFeedback(<?=$fid?>)">Delete</button><?php endif; ?></div></td></tr>
-  <?php endforeach; endif; ?></tbody></table></div>
 </section>
 
 

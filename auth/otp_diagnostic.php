@@ -18,7 +18,9 @@ $result = [
     'smtp_username_configured' => MAIL_USERNAME !== '',
     'smtp_password_configured' => MAIL_PASSWORD !== '',
     'sender_configured' => filter_var(OTP_SENDER_EMAIL, FILTER_VALIDATE_EMAIL) !== false,
-    'transport' => MAIL_PORT === 465 ? 'implicit TLS' : 'STARTTLS',
+    'transport' => MAIL_SMTP_TRANSPORT === 'auto' ? 'cURL SMTP then socket fallback' : MAIL_SMTP_TRANSPORT,
+    'smtp_timeout_seconds' => MAIL_SMTP_TIMEOUT_SECONDS,
+    'smtp_dns_resolves' => (bool)gethostbyname(MAIL_HOST) && gethostbyname(MAIL_HOST) !== MAIL_HOST,
     'status' => 'configuration_error',
 ];
 

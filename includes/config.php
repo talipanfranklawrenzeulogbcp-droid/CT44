@@ -115,8 +115,17 @@ define('MAIL_HOST', getenv('GSMS_MAIL_HOST') ?: 'smtp.gmail.com');
 // default for compatibility, while mailer.php can fall back to 465 if a host
 // blocks STARTTLS or the configured port is unavailable.
 define('MAIL_PORT', max(1, (int)(getenv('GSMS_MAIL_PORT') ?: (getenv('MAIL_PORT') ?: 587))));
-define('MAIL_USERNAME', trim((string)(getenv('GSMS_MAIL_USERNAME') ?: (getenv('MAIL_USERNAME') ?: (getenv('GMAIL_SMTP_USERNAME') ?: 'governancesafety21@gmail.com')))));
-define('MAIL_PASSWORD', (string)(getenv('GSMS_MAIL_PASSWORD') ?: (getenv('MAIL_PASSWORD') ?: (getenv('GMAIL_APP_PASSWORD') ?: (getenv('SMTP_PASSWORD') ?: '')))));
+define('MAIL_USERNAME', trim((string)(getenv('GSMS_MAIL_USERNAME') ?: (getenv('MAIL_USERNAME') ?: (getenv('GMAIL_SMTP_USERNAME') ?: (getenv('SMTP_USERNAME') ?: 'governancesafety21@gmail.com'))))));
+// SMTP password may be supplied as an environment variable or Docker secret.
+// Never hard-code the Gmail/App password into the application source.
+$mailPassword = getenv('GSMS_MAIL_PASSWORD') ?: (getenv('MAIL_PASSWORD') ?: (getenv('GMAIL_APP_PASSWORD') ?: (getenv('SMTP_PASSWORD') ?: (getenv('SMTP_PASS') ?: ''))));
+if (trim((string)$mailPassword) === '') {
+    $passwordFile = getenv('GSMS_MAIL_PASSWORD_FILE') ?: (getenv('SMTP_PASSWORD_FILE') ?: '/run/secrets/gsms_mail_password');
+    if ($passwordFile && is_readable($passwordFile)) {
+        $mailPassword = trim((string)file_get_contents($passwordFile));
+    }
+}
+define('MAIL_PASSWORD', trim((string)$mailPassword));
 // When the sender is not explicitly configured, use the authenticated Gmail
 // account. A fixed sender address can cause Gmail 553/550 errors when a
 // deployment changes only GSMS_MAIL_USERNAME.
@@ -134,7 +143,8 @@ define('OTP_RESEND_COOLDOWN_SECONDS', 15);
 define('OTP_PENDING_SESSION_MINUTES', 30);
 // Keep SMTP failures from making login appear frozen; successful Gmail delivery
 // is unaffected by this connection/response timeout.
-define('MAIL_SMTP_TIMEOUT_SECONDS', max(5, (int)(getenv('GSMS_MAIL_TIMEOUT') ?: 8)));
+define('MAIL_SMTP_TIMEOUT_SECONDS', max(8, (int)(getenv('GSMS_MAIL_TIMEOUT') ?: 15)));
+define('MAIL_SMTP_TRANSPORT', strtolower(trim((string)(getenv('GSMS_MAIL_TRANSPORT') ?: 'auto'))));
 // Retry transient SMTP/network failures before falling back to the server mailer.
 define('OTP_MAIL_RETRIES', max(1, min(5, (int)(getenv('GSMS_OTP_MAIL_RETRIES') ?: 3))));
 define('OTP_MAIL_RETRY_DELAY_MS', max(100, min(2000, (int)(getenv('GSMS_OTP_MAIL_RETRY_DELAY_MS') ?: 350))));

@@ -160,18 +160,23 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
                         throw $dbError;
                     }
 
-                    // Only after the OTP is durable do we send it. If delivery
-                    // fails, the user can safely use Resend without losing the
-                    // newly generated code due to a database race.
-                    send_otp_email($u['email'],$u['name'],$otp);
-
+                    // Establish the pending-login session BEFORE sending mail. If
+                    // SMTP is temporarily unavailable, the user remains on the OTP
+                    // screen and can immediately use Resend instead of being forced
+                    // back through password authentication.
                     $_SESSION['pending_otp_user']=[
                         'id'=>(int)$u['id'],'name'=>$u['name'],
                         'email'=>$u['email'],'role'=>$u['role']
                     ];
                     $_SESSION['pending_otp_created']=time();
-                    $_SESSION['otp_last_resend']=time();
+                    unset($_SESSION['otp_last_resend']);
                     $pending=$_SESSION['pending_otp_user'];
+
+                    // Only after the OTP is durable do we send it. If delivery
+                    // fails, the exact stored OTP remains available for resend.
+                    send_otp_email($u['email'],$u['name'],$otp);
+
+                    $_SESSION['otp_last_resend']=time();
                     $success='Verification code sent. Enter the 6-digit OTP below to continue to the dashboard.';
 
                     $history=db()->prepare('INSERT INTO login_history(user_id,email,status,ip_address,user_agent) VALUES(?,?,?,?,?)');
@@ -181,7 +186,11 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
                         substr($_SERVER['HTTP_USER_AGENT']??'',0,500)
                     ]);
                 } catch(Throwable $mailError) {
-                    $error='We could not send the verification code. Please verify the Gmail SMTP/App Password configuration and try again.';
+                    // Keep the pending session and durable OTP so Resend works
+                    // even when the first delivery attempt fails.
+                    $pending=$_SESSION['pending_otp_user'] ?? null;
+                    $error='The OTP was generated and saved, but email delivery failed. Use Resend verification code or check the SMTP/App Password configuration.';
+                    otp_mail_log('Initial OTP delivery failed for user '.(int)$u['id'].': '.$mailError->getMessage());
                 }
             } else {
                 $error='Invalid email or password.';
